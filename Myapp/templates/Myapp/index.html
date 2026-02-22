@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero-spotlight reveal-up">
+  <div class="hero-layout">
+    <div class="hero-copy">
+      <span class="hero-badge"><i class="bi bi-lightning-charge-fill"></i>ANINDA HIZMET AGI</span>
+      <h1>Mahallendeki En Iyi Ustalari <span>Tek Ekranda</span> Yakalayin</h1>
+      <p>Kuzey Kibris genelinde tesisat, elektrik ve ev ici teknik islerde saniyeler icinde filtrele, puanlari karsilastir ve talep ac.</p>
+      <div class="hero-actions">
+        <a class="btn hero-btn hero-btn-solid" href="#search-panel"><i class="bi bi-search me-1"></i>Usta Ara</a>
+        <a class="btn hero-btn hero-btn-outline" href="#talep-form"><i class="bi bi-send-check me-1"></i>Talep Ac</a>
+      </div>
+      <div class="trust-ribbon">
+        <span><i class="bi bi-shield-check"></i>Dogrulanmis Profiller</span>
+        <span><i class="bi bi-stopwatch"></i>Hizli Donus</span>
+        <span><i class="bi bi-star"></i>Gercek Musteri Puani</span>
+      </div>
+    </div>
+    <aside class="hero-metrics">
+      <div class="metric-card">
+        <p class="metric-top"><i class="bi bi-people-fill"></i>Su an platformda</p>
+        <p class="metric-value">{{ providers|length }}</p>
+        <p class="metric-note">aktif usta listeleniyor</p>
+      </div>
+      <div class="metric-card">
+        <p class="metric-top"><i class="bi bi-headset"></i>Destek merkezi</p>
+        <p class="metric-value">24/7</p>
+        <p class="metric-note">anlik canli destek</p>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<section class="status-strip reveal-up delay-1">
+  <div class="status-item"><i class="bi bi-geo-alt-fill"></i>Kuzey Kibris sehirlerine gore filtreleme</div>
+  <div class="status-item"><i class="bi bi-check2-circle"></i>Hizmet turune gore net filtreleme</div>
+  <div class="status-item"><i class="bi bi-chat-left-dots-fill"></i>Talep olusturunca otomatik eslestirme</div>
+</section>
+
+<section class="row g-4 align-items-start">
+  <div class="col-xl-7">
+    <div class="card panel-card shadow-sm reveal-up delay-1" id="search-panel">
+      <div class="card-body">
+        <h2 class="h5 mb-3 section-title"><i class="bi bi-search me-2"></i>Usta Ara</h2>
+        <form method="get" class="row g-3 search-form" id="search-form">
+          <div class="col-lg-4">
+            <label class="form-label">{{ search_form.service_type.label }}</label>
+            {{ search_form.service_type }}
+          </div>
+          <div class="col-lg-4">
+            <label class="form-label">{{ search_form.city.label }}</label>
+            {{ search_form.city }}
+          </div>
+          <div class="col-lg-4">
+            <label class="form-label">{{ search_form.district.label }}</label>
+            {{ search_form.district }}
+          </div>
+          <div class="col-12 form-toolbar">
+            {{ search_form.latitude }}
+            {{ search_form.longitude }}
+            <button type="submit" class="btn btn-primary btn-main"><i class="bi bi-funnel-fill me-1"></i>Filtrele</button>
+            <button type="button" class="btn btn-outline-success btn-location" id="use-location-btn"><i class="bi bi-crosshair2 me-1"></i>Konumumu Kullan</button>
+            <span class="small text-muted location-status" id="location-status"></span>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card panel-card shadow-sm mt-4 reveal-up delay-2">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+          <h2 class="h5 mb-0 section-title"><i class="bi bi-person-workspace me-2"></i>Musait Ustalar</h2>
+          {% if location_used %}
+            <span class="result-badge"><i class="bi bi-compass-fill me-1"></i>Mesafeye Gore Siralandi</span>
+          {% endif %}
+        </div>
+        {% if providers %}
+          <div class="row g-3 provider-grid">
+            {% for provider in providers %}
+              <div class="col-md-6 col-xl-6">
+                <article class="provider-card p-3 h-100">
+                  <div class="d-flex align-items-start justify-content-between mb-3">
+                    <div class="provider-head">
+                      <span class="avatar-dot">{{ provider.full_name|slice:":1"|upper }}</span>
+                      <h3 class="h6 mb-0">{{ provider.full_name }}</h3>
+                    </div>
+                    <span class="pill">{{ provider.service_type.name }}</span>
+                  </div>
+                  <p class="small mb-1 provider-location"><i class="bi bi-geo-alt-fill me-1"></i>{{ provider.city }} / {{ provider.district }}</p>
+                  {% if location_used and provider.distance_km is not None %}
+                    <p class="small mb-1 provider-distance"><i class="bi bi-sign-turn-right-fill me-1"></i>Mesafe: {{ provider.distance_km }} km</p>
+                  {% endif %}
+                  <p class="small mb-1 provider-rating">
+                    <i class="bi bi-star-fill me-1"></i>Ortalama Puan: {{ provider.rating }} / 5
+                    <span class="rating-count">({{ provider.ratings_count }} degerlendirme)</span>
+                  </p>
+                  <div class="provider-bottom">
+                    <p class="small mb-0 provider-phone"><i class="bi bi-telephone-fill me-1"></i><strong>{{ provider.phone }}</strong></p>
+                    <a href="tel:{{ provider.phone }}" class="btn btn-sm provider-call-btn">Ara</a>
+                  </div>
+                </article>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="mb-0">Kriterlere uygun usta bulunamadi.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-5">
+    <div class="card panel-card shadow-sm sticky-form reveal-up delay-3" id="talep-form">
+      <div class="card-body">
+        <h2 class="h5 mb-3 section-title"><i class="bi bi-send-check-fill me-2"></i>Hizmet Talebi Olustur</h2>
+        {% if request.user.is_authenticated %}
+          <p class="small text-muted mb-3"><i class="bi bi-person-check-fill me-1"></i>Giris yaptigin icin bilgiler otomatik dolduruldu.</p>
+        {% endif %}
+        <form method="post" action="{% url 'create_request' %}" class="row g-3" id="request-form">
+          {% csrf_token %}
+          <div class="col-12">
+            <label class="form-label">{{ request_form.customer_name.label }}</label>
+            {{ request_form.customer_name }}
+            {% for error in request_form.customer_name.errors %}
+              <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-12">
+            <label class="form-label">{{ request_form.customer_phone.label }}</label>
+            {{ request_form.customer_phone }}
+            {% for error in request_form.customer_phone.errors %}
+              <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-12">
+            <label class="form-label">{{ request_form.service_type.label }}</label>
+            {{ request_form.service_type }}
+            {% for error in request_form.service_type.errors %}
+              <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">{{ request_form.city.label }}</label>
+            {{ request_form.city }}
+            {% for error in request_form.city.errors %}
+              <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">{{ request_form.district.label }}</label>
+            {{ request_form.district }}
+            {% for error in request_form.district.errors %}
+              <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-12">
+            <label class="form-label">{{ request_form.details.label }}</label>
+            {{ request_form.details }}
+            {% for error in request_form.details.errors %}
+              <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-12">
+            <button type="submit" class="btn btn-dark w-100 btn-main-dark"><i class="bi bi-send-fill me-2"></i>Talep Gonder</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+<script id="city-district-map" type="application/json">{{ city_district_map_json|safe }}</script>
+<script>
+  (function () {
+    const cityDistrictMapElement = document.getElementById("city-district-map");
+    const cityDistrictMap = cityDistrictMapElement ? JSON.parse(cityDistrictMapElement.textContent) : {};
+
+    function setupCityDistrictByForm(formId) {
+      const form = document.getElementById(formId);
+      if (!form) return;
+
+      const citySelect = form.querySelector("select[name='city']");
+      const districtSelect = form.querySelector("select[name='district']");
+      if (!citySelect || !districtSelect) return;
+
+      function repopulateDistricts() {
+        const selectedBefore = districtSelect.value;
+        const city = citySelect.value;
+        const districts = cityDistrictMap[city] || [];
+        districtSelect.innerHTML = "";
+
+        const emptyOption = document.createElement("option");
+        emptyOption.value = "";
+        emptyOption.textContent = "Ilce secin";
+        districtSelect.appendChild(emptyOption);
+
+        districts.forEach(function (district) {
+          const option = document.createElement("option");
+          option.value = district;
+          option.textContent = district;
+          districtSelect.appendChild(option);
+        });
+
+        if (selectedBefore && districts.includes(selectedBefore)) {
+          districtSelect.value = selectedBefore;
+        } else {
+          districtSelect.value = "";
+        }
+      }
+
+      citySelect.addEventListener("change", repopulateDistricts);
+      repopulateDistricts();
+    }
+
+    setupCityDistrictByForm("search-form");
+    setupCityDistrictByForm("request-form");
+
+    const locationBtn = document.getElementById("use-location-btn");
+    const status = document.getElementById("location-status");
+    const searchForm = document.getElementById("search-form");
+    const latInput = searchForm ? searchForm.querySelector("input[name='latitude']") : null;
+    const lonInput = searchForm ? searchForm.querySelector("input[name='longitude']") : null;
+    if (!locationBtn || !latInput || !lonInput) return;
+
+    locationBtn.addEventListener("click", function () {
+      if (!navigator.geolocation) {
+        status.textContent = "Tarayici konum desteklemiyor.";
+        return;
+      }
+      status.textContent = "Konum aliniyor...";
+      navigator.geolocation.getCurrentPosition(
+        function (position) {
+          latInput.value = position.coords.latitude.toFixed(6);
+          lonInput.value = position.coords.longitude.toFixed(6);
+          status.textContent = "Konum alindi, liste guncelleniyor.";
+          searchForm.submit();
+        },
+        function () {
+          status.textContent = "Konum izni verilmedi veya alinamadi.";
+        }
+      );
+    });
+  })();
+</script>
+{% endblock %}
