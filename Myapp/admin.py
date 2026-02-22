@@ -70,7 +70,8 @@ class ProviderAdmin(admin.ModelAdmin):
     form = ProviderAdminForm
     list_display = (
         "full_name",
-        "service_type",
+        "user",
+        "service_types_list",
         "city",
         "district",
         "phone",
@@ -79,8 +80,13 @@ class ProviderAdmin(admin.ModelAdmin):
         "is_available",
         "rating",
     )
-    list_filter = ("service_type", "city", "is_available")
-    search_fields = ("full_name", "city", "district", "phone")
+    list_filter = ("service_types", "city", "is_available")
+    search_fields = ("full_name", "user__username", "city", "district", "phone", "service_types__name")
+    filter_horizontal = ("service_types",)
+
+    @admin.display(description="Hizmet Turleri")
+    def service_types_list(self, obj):
+        return obj.service_types_display()
 
 
 @admin.register(ServiceRequest)
@@ -101,12 +107,12 @@ class CustomerProfileAdmin(admin.ModelAdmin):
 @admin.register(ProviderRating)
 class ProviderRatingAdmin(admin.ModelAdmin):
     list_display = ("service_request", "provider", "customer", "score", "updated_at")
-    list_filter = ("score", "provider__city", "provider__service_type")
+    list_filter = ("score", "provider__city")
     search_fields = ("service_request__id", "provider__full_name", "customer__username", "comment")
 
 
 @admin.register(ProviderOffer)
 class ProviderOfferAdmin(admin.ModelAdmin):
     list_display = ("service_request", "provider", "sequence", "status", "token", "sent_at", "responded_at")
-    list_filter = ("status", "provider__city", "provider__service_type")
+    list_filter = ("status", "provider__city")
     search_fields = ("service_request__id", "provider__full_name", "token", "last_delivery_detail")

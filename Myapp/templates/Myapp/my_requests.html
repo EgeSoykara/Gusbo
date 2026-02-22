@@ -4,7 +4,17 @@
   <div class="card-body p-4">
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
       <h1 class="h4 mb-0"><i class="bi bi-kanban me-2"></i>Taleplerim</h1>
-      <a class="btn btn-main" href="{% url 'index' %}#talep-form"><i class="bi bi-plus-circle me-1"></i>Yeni Talep</a>
+      <div class="d-flex align-items-center gap-2">
+        {% if cancelled_count %}
+          <form method="post" action="{% url 'delete_all_cancelled_requests' %}" class="m-0">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger">
+              <i class="bi bi-trash3 me-1"></i>Iptalleri Sil ({{ cancelled_count }})
+            </button>
+          </form>
+        {% endif %}
+        <a class="btn btn-main" href="{% url 'index' %}#talep-form"><i class="bi bi-plus-circle me-1"></i>Yeni Talep</a>
+      </div>
     </div>
     {% if requests %}
       <div class="table-responsive">
@@ -45,29 +55,50 @@
                     </form>
                   {% elif item.status == "completed" %}
                     {% if item.matched_provider %}
-                      <form method="post" action="{% url 'rate_request' item.id %}" class="request-rate-form">
-                        {% csrf_token %}
-                        <div class="request-rate-row">
-                          <select name="score" required>
-                            <option value="">Puan</option>
-                            <option value="5" {% if item.rating_entry and item.rating_entry.score == 5 %}selected{% endif %}>5</option>
-                            <option value="4" {% if item.rating_entry and item.rating_entry.score == 4 %}selected{% endif %}>4</option>
-                            <option value="3" {% if item.rating_entry and item.rating_entry.score == 3 %}selected{% endif %}>3</option>
-                            <option value="2" {% if item.rating_entry and item.rating_entry.score == 2 %}selected{% endif %}>2</option>
-                            <option value="1" {% if item.rating_entry and item.rating_entry.score == 1 %}selected{% endif %}>1</option>
-                          </select>
-                          <button type="submit" class="btn btn-sm request-rate-btn">
-                            {% if item.rating_entry %}Guncelle{% else %}Puanla{% endif %}
-                          </button>
+                      {% if item.rating_entry %}
+                        <div class="small">
+                          <strong>Oy verildi:</strong> {{ item.rating_entry.score }}/5
+                          {% if item.rating_entry.comment %}
+                            <br><span class="text-muted">{{ item.rating_entry.comment }}</span>
+                          {% endif %}
                         </div>
-                        <textarea name="comment" rows="2" placeholder="Yorum (istege bagli)">{% if item.rating_entry %}{{ item.rating_entry.comment }}{% endif %}</textarea>
-                      </form>
+                      {% else %}
+                        <form method="post" action="{% url 'rate_request' item.id %}" class="request-rate-form">
+                          {% csrf_token %}
+                          <div class="request-rate-row">
+                            <select name="score" required>
+                              <option value="">Puan</option>
+                              <option value="5">5</option>
+                              <option value="4">4</option>
+                              <option value="3">3</option>
+                              <option value="2">2</option>
+                              <option value="1">1</option>
+                            </select>
+                            <button type="submit" class="btn btn-sm request-rate-btn">Puanla</button>
+                          </div>
+                          <textarea name="comment" rows="2" placeholder="Yorum (istege bagli)"></textarea>
+                        </form>
+                      {% endif %}
                     {% else %}
                       <span class="small text-muted">Usta yok</span>
                     {% endif %}
+                  {% elif item.status == "new" or item.status == "pending_provider" %}
+                    <form method="post" action="{% url 'cancel_request' item.id %}" class="m-0">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-danger">
+                        <i class="bi bi-x-circle me-1"></i>Aramayi Iptal Et
+                      </button>
+                    </form>
                   {% else %}
                     {% if item.status == "pending_provider" %}
                       <span class="small text-warning fw-semibold">Usta onayi bekleniyor</span>
+                    {% elif item.status == "cancelled" %}
+                      <form method="post" action="{% url 'delete_cancelled_request' item.id %}" class="m-0">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                          <i class="bi bi-trash3 me-1"></i>Sil
+                        </button>
+                      </form>
                     {% else %}
                       <span class="small text-muted">Bekleniyor</span>
                     {% endif %}

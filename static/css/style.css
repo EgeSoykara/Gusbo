@@ -729,6 +729,11 @@ h3,
   color: #6b21a8;
 }
 
+.status-cancelled {
+  background: rgba(239, 68, 68, 0.14);
+  color: #b91c1c;
+}
+
 .alert {
   border: 1px solid var(--line);
   border-radius: 13px;
@@ -785,6 +790,10 @@ textarea:focus {
 
 [data-theme="dark"] .status-completed {
   color: #d8b4fe;
+}
+
+[data-theme="dark"] .status-cancelled {
+  color: #fca5a5;
 }
 
 [data-theme="dark"] .request-complete-btn {

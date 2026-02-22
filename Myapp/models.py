@@ -16,8 +16,15 @@ class ServiceType(models.Model):
 
 
 class Provider(models.Model):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="provider_profile",
+    )
     full_name = models.CharField(max_length=120)
-    service_type = models.ForeignKey(ServiceType, on_delete=models.CASCADE, related_name="providers")
+    service_types = models.ManyToManyField(ServiceType, related_name="providers", blank=True)
     city = models.CharField(max_length=80)
     district = models.CharField(max_length=80)
     phone = models.CharField(max_length=20)
@@ -32,7 +39,10 @@ class Provider(models.Model):
         ordering = ["-is_available", "-rating", "full_name"]
 
     def __str__(self):
-        return f"{self.full_name} ({self.service_type.name})"
+        return self.full_name
+
+    def service_types_display(self):
+        return ", ".join(self.service_types.values_list("name", flat=True))
 
 
 class ServiceRequest(models.Model):
@@ -41,6 +51,7 @@ class ServiceRequest(models.Model):
         ("pending_provider", "Usta Onayi Bekleniyor"),
         ("matched", "Eslestirildi"),
         ("completed", "Tamamlandi"),
+        ("cancelled", "Iptal Edildi"),
     )
 
     customer_name = models.CharField(max_length=120)

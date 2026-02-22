@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card panel-card shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+      <h1 class="h4 mb-0"><i class="bi bi-briefcase-fill me-2"></i>Usta Paneli</h1>
+      <span class="small text-muted">{{ provider.full_name }} - {{ provider.city }}/{{ provider.district }}</span>
+    </div>
+    <p class="mb-0 text-muted">Yeni talepler burada sirali gelir. Kabul veya red ederek eslesme akisina devam edebilirsiniz.</p>
+  </div>
+</section>
+
+<section class="card panel-card shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3"><i class="bi bi-inbox-fill me-2"></i>Bekleyen Talepler</h2>
+    {% if pending_offers %}
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Talep No</th>
+              <th>Tarih</th>
+              <th>Hizmet</th>
+              <th>Konum</th>
+              <th>Musteri</th>
+              <th>Detay</th>
+              <th>Islem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for offer in pending_offers %}
+              <tr>
+                <td>#{{ offer.service_request.id }}</td>
+                <td>{{ offer.sent_at|date:"d.m.Y H:i" }}</td>
+                <td>{{ offer.service_request.service_type.name }}</td>
+                <td>{{ offer.service_request.city }} / {{ offer.service_request.district }}</td>
+                <td>{{ offer.service_request.customer_name }}<br><span class="small text-muted">{{ offer.service_request.customer_phone }}</span></td>
+                <td>{{ offer.service_request.details|truncatechars:90 }}</td>
+                <td>
+                  <div class="d-flex gap-2">
+                    <form method="post" action="{% url 'provider_accept_offer' offer.id %}">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm request-complete-btn"><i class="bi bi-check2-circle me-1"></i>Kabul</button>
+                    </form>
+                    <form method="post" action="{% url 'provider_reject_offer' offer.id %}">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Red</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="mb-0 text-muted">Su anda bekleyen talep yok.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card panel-card shadow-sm reveal-up">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3"><i class="bi bi-clock-history me-2"></i>Son Yanitlarim</h2>
+    {% if recent_offers %}
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Talep No</th>
+              <th>Hizmet</th>
+              <th>Durum</th>
+              <th>Yanit Zamani</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for offer in recent_offers %}
+              <tr>
+                <td>#{{ offer.service_request.id }}</td>
+                <td>{{ offer.service_request.service_type.name }}</td>
+                <td><span class="status-pill status-{{ offer.status }}">{{ offer.get_status_display }}</span></td>
+                <td>{{ offer.responded_at|date:"d.m.Y H:i" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="mb-0 text-muted">Henuz cevaplanan teklif yok.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

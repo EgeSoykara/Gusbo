@@ -84,7 +84,13 @@
                       <span class="avatar-dot">{{ provider.full_name|slice:":1"|upper }}</span>
                       <h3 class="h6 mb-0">{{ provider.full_name }}</h3>
                     </div>
-                    <span class="pill">{{ provider.service_type.name }}</span>
+                    <span class="pill">
+                      {% for service in provider.service_types.all %}
+                        {{ service.name }}{% if not forloop.last %}, {% endif %}
+                      {% empty %}
+                        Hizmet belirtilmedi
+                      {% endfor %}
+                    </span>
                   </div>
                   <p class="small mb-1 provider-location"><i class="bi bi-geo-alt-fill me-1"></i>{{ provider.city }} / {{ provider.district }}</p>
                   {% if location_used and provider.distance_km is not None %}
@@ -110,62 +116,74 @@
   </div>
 
   <div class="col-xl-5">
-    <div class="card panel-card shadow-sm sticky-form reveal-up delay-3" id="talep-form">
-      <div class="card-body">
-        <h2 class="h5 mb-3 section-title"><i class="bi bi-send-check-fill me-2"></i>Hizmet Talebi Olustur</h2>
-        {% if request.user.is_authenticated %}
-          <p class="small text-muted mb-3"><i class="bi bi-person-check-fill me-1"></i>Giris yaptigin icin bilgiler otomatik dolduruldu.</p>
-        {% endif %}
-        <form method="post" action="{% url 'create_request' %}" class="row g-3" id="request-form">
-          {% csrf_token %}
-          <div class="col-12">
-            <label class="form-label">{{ request_form.customer_name.label }}</label>
-            {{ request_form.customer_name }}
-            {% for error in request_form.customer_name.errors %}
-              <div class="text-danger small">{{ error }}</div>
-            {% endfor %}
-          </div>
-          <div class="col-12">
-            <label class="form-label">{{ request_form.customer_phone.label }}</label>
-            {{ request_form.customer_phone }}
-            {% for error in request_form.customer_phone.errors %}
-              <div class="text-danger small">{{ error }}</div>
-            {% endfor %}
-          </div>
-          <div class="col-12">
-            <label class="form-label">{{ request_form.service_type.label }}</label>
-            {{ request_form.service_type }}
-            {% for error in request_form.service_type.errors %}
-              <div class="text-danger small">{{ error }}</div>
-            {% endfor %}
-          </div>
-          <div class="col-md-6">
-            <label class="form-label">{{ request_form.city.label }}</label>
-            {{ request_form.city }}
-            {% for error in request_form.city.errors %}
-              <div class="text-danger small">{{ error }}</div>
-            {% endfor %}
-          </div>
-          <div class="col-md-6">
-            <label class="form-label">{{ request_form.district.label }}</label>
-            {{ request_form.district }}
-            {% for error in request_form.district.errors %}
-              <div class="text-danger small">{{ error }}</div>
-            {% endfor %}
-          </div>
-          <div class="col-12">
-            <label class="form-label">{{ request_form.details.label }}</label>
-            {{ request_form.details }}
-            {% for error in request_form.details.errors %}
-              <div class="text-danger small">{{ error }}</div>
-            {% endfor %}
-          </div>
-          <div class="col-12">
-            <button type="submit" class="btn btn-dark w-100 btn-main-dark"><i class="bi bi-send-fill me-2"></i>Talep Gonder</button>
-          </div>
-        </form>
+    {% if is_provider_user %}
+      <div class="card panel-card shadow-sm sticky-form reveal-up delay-3">
+        <div class="card-body">
+          <h2 class="h5 mb-3 section-title"><i class="bi bi-tools me-2"></i>Usta Modu</h2>
+          <p class="mb-3">Usta hesabi ile giris yaptiginiz icin talep olusturma kapali.</p>
+          <a href="{% url 'provider_requests' %}" class="btn btn-main-dark w-100">
+            <i class="bi bi-briefcase-fill me-2"></i>Usta Paneline Git
+          </a>
+        </div>
       </div>
-    </div>
+    {% else %}
+      <div class="card panel-card shadow-sm sticky-form reveal-up delay-3" id="talep-form">
+        <div class="card-body">
+          <h2 class="h5 mb-3 section-title"><i class="bi bi-send-check-fill me-2"></i>Hizmet Talebi Olustur</h2>
+          {% if request.user.is_authenticated %}
+            <p class="small text-muted mb-3"><i class="bi bi-person-check-fill me-1"></i>Giris yaptigin icin bilgiler otomatik dolduruldu.</p>
+          {% endif %}
+          <form method="post" action="{% url 'create_request' %}" class="row g-3" id="request-form">
+            {% csrf_token %}
+            <div class="col-12">
+              <label class="form-label">{{ request_form.customer_name.label }}</label>
+              {{ request_form.customer_name }}
+              {% for error in request_form.customer_name.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+            <div class="col-12">
+              <label class="form-label">{{ request_form.customer_phone.label }}</label>
+              {{ request_form.customer_phone }}
+              {% for error in request_form.customer_phone.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+            <div class="col-12">
+              <label class="form-label">{{ request_form.service_type.label }}</label>
+              {{ request_form.service_type }}
+              {% for error in request_form.service_type.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">{{ request_form.city.label }}</label>
+              {{ request_form.city }}
+              {% for error in request_form.city.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">{{ request_form.district.label }}</label>
+              {{ request_form.district }}
+              {% for error in request_form.district.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+            <div class="col-12">
+              <label class="form-label">{{ request_form.details.label }}</label>
+              {{ request_form.details }}
+              {% for error in request_form.details.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+            <div class="col-12">
+              <button type="submit" class="btn btn-dark w-100 btn-main-dark"><i class="bi bi-send-fill me-2"></i>Talep Gonder</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    {% endif %}
   </div>
 </section>
 <script id="city-district-map" type="application/json">{{ city_district_map_json|safe }}</script>
@@ -192,6 +210,11 @@
         emptyOption.value = "";
         emptyOption.textContent = "Ilce secin";
         districtSelect.appendChild(emptyOption);
+
+        const anyOption = document.createElement("option");
+        anyOption.value = "Herhangi";
+        anyOption.textContent = "Herhangi";
+        districtSelect.appendChild(anyOption);
 
         districts.forEach(function (district) {
           const option = document.createElement("option");

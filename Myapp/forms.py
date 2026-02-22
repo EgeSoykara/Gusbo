@@ -1,9 +1,13 @@
 from django import forms
+from django.core.exceptions import ValidationError
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.contrib.auth.models import User
 
 from .constants import NC_CITY_CHOICES, NC_DISTRICT_CHOICES
-from .models import CustomerProfile, ProviderRating, ServiceRequest, ServiceType
+from .models import CustomerProfile, Provider, ProviderRating, ServiceRequest, ServiceType
+
+ANY_DISTRICT_VALUE = "Herhangi"
+DISTRICT_CHOICES_WITH_ANY = [("", "Ilce secin"), (ANY_DISTRICT_VALUE, "Herhangi")] + NC_DISTRICT_CHOICES
 
 
 class ServiceSearchForm(forms.Form):
@@ -14,14 +18,14 @@ class ServiceSearchForm(forms.Form):
         label="Hizmet",
     )
     city = forms.ChoiceField(choices=[("", "Sehir secin")] + NC_CITY_CHOICES, required=False, label="Sehir")
-    district = forms.ChoiceField(choices=[("", "Ilce secin")] + NC_DISTRICT_CHOICES, required=False, label="Ilce")
+    district = forms.ChoiceField(choices=DISTRICT_CHOICES_WITH_ANY, required=False, label="Ilce")
     latitude = forms.FloatField(required=False, widget=forms.HiddenInput())
     longitude = forms.FloatField(required=False, widget=forms.HiddenInput())
 
 
 class ServiceRequestForm(forms.ModelForm):
     city = forms.ChoiceField(choices=[("", "Sehir secin")] + NC_CITY_CHOICES, label="Sehir")
-    district = forms.ChoiceField(choices=[("", "Ilce secin")] + NC_DISTRICT_CHOICES, label="Ilce")
+    district = forms.ChoiceField(choices=DISTRICT_CHOICES_WITH_ANY, label="Ilce")
 
     class Meta:
         model = ServiceRequest
@@ -45,7 +49,7 @@ class CustomerSignupForm(UserCreationForm):
     email = forms.EmailField(required=True, label="E-posta")
     phone = forms.CharField(max_length=20, required=True, label="Telefon")
     city = forms.ChoiceField(choices=[("", "Sehir secin")] + NC_CITY_CHOICES, required=True, label="Sehir")
-    district = forms.ChoiceField(choices=[("", "Ilce secin")] + NC_DISTRICT_CHOICES, required=True, label="Ilce")
+    district = forms.ChoiceField(choices=DISTRICT_CHOICES_WITH_ANY, required=True, label="Ilce")
 
     class Meta:
         model = User
@@ -75,6 +79,27 @@ class CustomerSignupForm(UserCreationForm):
 class CustomerLoginForm(AuthenticationForm):
     username = forms.CharField(label="Kullanici Adi")
     password = forms.CharField(label="Sifre", widget=forms.PasswordInput)
+
+    def confirm_login_allowed(self, user):
+        super().confirm_login_allowed(user)
+        if Provider.objects.filter(user=user).exists():
+            raise ValidationError(
+                "Bu hesap usta hesabidir. Lutfen usta giris ekranini kullanin.",
+                code="invalid_login",
+            )
+
+
+class ProviderLoginForm(AuthenticationForm):
+    username = forms.CharField(label="Usta Kullanici Adi")
+    password = forms.CharField(label="Sifre", widget=forms.PasswordInput)
+
+    def confirm_login_allowed(self, user):
+        super().confirm_login_allowed(user)
+        if not Provider.objects.filter(user=user).exists():
+            raise ValidationError(
+                "Bu hesap usta olarak tanimli degil.",
+                code="invalid_login",
+            )
 
 
 class ProviderRatingForm(forms.ModelForm):

@@ -24,7 +24,7 @@
       <a class="navbar-brand site-brand" href="{% url 'index' %}">
         <span class="site-brand-mark"><i class="bi bi-tools"></i></span>
         <span class="site-brand-copy">
-          <strong>UstaBul</strong>
+          <strong>Gusbo</strong>
           <small>Yerli Hizmet Platformu</small>
         </span>
       </a>
@@ -36,7 +36,9 @@
       <div class="collapse navbar-collapse" id="siteNav">
         <div class="navbar-nav nav-links ms-lg-4">
           <a class="nav-link {% if request.path == '/' %}active{% endif %}" href="{% url 'index' %}"><i class="bi bi-house-door me-1"></i>Ana Sayfa</a>
-          {% if request.user.is_authenticated %}
+          {% if request.user.is_authenticated and request.session.role == "provider" %}
+            <a class="nav-link {% if request.path == '/usta/talepler/' %}active{% endif %}" href="{% url 'provider_requests' %}"><i class="bi bi-briefcase me-1"></i>Usta Paneli</a>
+          {% elif request.user.is_authenticated %}
             <a class="nav-link {% if request.path == '/taleplerim/' %}active{% endif %}" href="{% url 'my_requests' %}"><i class="bi bi-kanban me-1"></i>Taleplerim</a>
           {% endif %}
           <a class="nav-link {% if request.path == '/contact/' %}active{% endif %}" href="{% url 'contact' %}"><i class="bi bi-chat-dots me-1"></i>Iletisim</a>
@@ -45,16 +47,23 @@
         <div class="nav-tools ms-lg-auto">
           {% if request.user.is_authenticated %}
             <span class="user-chip d-none d-md-inline-flex"><i class="bi bi-person-circle me-1"></i>{{ request.user.username }}</span>
-            <a class="btn nav-cta-btn d-none d-md-inline-flex" href="{% url 'index' %}#talep-form">
-              <i class="bi bi-lightning-charge-fill me-1"></i>Talep Ac
-            </a>
+            {% if request.session.role == "provider" %}
+              <a class="btn nav-cta-btn d-none d-md-inline-flex" href="{% url 'provider_requests' %}">
+                <i class="bi bi-briefcase-fill me-1"></i>Usta Paneli
+              </a>
+            {% else %}
+              <a class="btn nav-cta-btn d-none d-md-inline-flex" href="{% url 'index' %}#talep-form">
+                <i class="bi bi-lightning-charge-fill me-1"></i>Talep Ac
+              </a>
+            {% endif %}
             <form method="post" action="{% url 'logout' %}" class="logout-form">
               {% csrf_token %}
               <button type="submit" class="btn nav-ghost-btn"><i class="bi bi-box-arrow-right me-1"></i>Cikis</button>
             </form>
           {% else %}
-            <a class="btn nav-ghost-btn" href="{% url 'login' %}"><i class="bi bi-box-arrow-in-right me-1"></i>Giris</a>
-            <a class="btn nav-cta-btn" href="{% url 'signup' %}"><i class="bi bi-person-plus-fill me-1"></i>Kayit Ol</a>
+            <a class="btn nav-ghost-btn" href="{% url 'customer_login' %}"><i class="bi bi-box-arrow-in-right me-1"></i>Musteri Girisi</a>
+            <a class="btn nav-ghost-btn" href="{% url 'provider_login' %}"><i class="bi bi-tools me-1"></i>Usta Girisi</a>
+            <a class="btn nav-cta-btn" href="{% url 'customer_signup' %}"><i class="bi bi-person-plus-fill me-1"></i>Musteri Kaydi</a>
           {% endif %}
           <button type="button" class="theme-toggle-btn" id="theme-toggle-btn" aria-label="Temayi degistir">
             <i class="bi bi-moon-stars-fill"></i>

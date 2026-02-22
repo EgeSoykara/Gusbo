@@ -151,16 +151,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'index'
 
-
-def env_bool(name, default=False):
-    return os.getenv(name, str(default)).lower() in ("1", "true", "yes", "on")
-
-
-WHATSAPP_NOTIFICATIONS_ENABLED = env_bool("WHATSAPP_NOTIFICATIONS_ENABLED", False)
-WHATSAPP_DEFAULT_COUNTRY_CODE = os.getenv("WHATSAPP_DEFAULT_COUNTRY_CODE", "+90")
-WHATSAPP_REQUEST_TIMEOUT_SEC = int(os.getenv("WHATSAPP_REQUEST_TIMEOUT_SEC", "10"))
-
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
-TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "")
-TWILIO_VALIDATE_WEBHOOK_SIGNATURE = env_bool("TWILIO_VALIDATE_WEBHOOK_SIGNATURE", True)
+# Cookie/Proxy settings to reduce CSRF/session issues on reverse proxies (Render).
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True

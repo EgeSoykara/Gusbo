@@ -86,7 +86,7 @@
 
       <p class="small mt-4 mb-0 text-muted">
         Zaten hesabin var mi?
-        <a href="{% url 'login' %}" class="auth-link">Giris yap</a>
+        <a href="{% url 'customer_login' %}" class="auth-link">Giris yap</a>
       </p>
     </div>
   </div>
@@ -110,6 +110,11 @@
       emptyOption.value = "";
       emptyOption.textContent = "Ilce secin";
       districtSelect.appendChild(emptyOption);
+
+      const anyOption = document.createElement("option");
+      anyOption.value = "Herhangi";
+      anyOption.textContent = "Herhangi";
+      districtSelect.appendChild(anyOption);
 
       districts.forEach(function (district) {
         const option = document.createElement("option");
