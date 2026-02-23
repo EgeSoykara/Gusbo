@@ -1,11 +1,11 @@
-const CACHE_NAME = "gusbo-pwa-v1";
+const CACHE_NAME = "ustabul-pwa-v2";
 const PRECACHE_URLS = [
   "/",
   "/offline/",
   "/static/css/style.css",
   "/static/pwa/manifest.webmanifest",
-  "/static/branding/logo-192.png",
-  "/static/branding/logo.png"
+  "/static/pwa/icon-192.png",
+  "/static/pwa/icon-512.png"
 ];
 
 self.addEventListener("install", (event) => {

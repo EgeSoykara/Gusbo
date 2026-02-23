@@ -15,8 +15,8 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <link rel="manifest" href="{% static 'pwa/manifest.webmanifest' %}">
-  <link rel="icon" href="{% static 'branding/logo-192.png' %}">
-  <link rel="apple-touch-icon" href="{% static 'branding/logo-192.png' %}">
+  <link rel="icon" href="{% static 'pwa/icon-192.png' %}">
+  <link rel="apple-touch-icon" href="{% static 'pwa/icon-192.png' %}">
   <link rel="stylesheet" href="{% static 'css/style.css' %}">
 </head>
 <body>
@@ -29,11 +29,9 @@
   <div class="container">
     <nav class="navbar navbar-expand-lg site-nav">
       <a class="navbar-brand site-brand" href="{% url 'index' %}">
-        <span class="site-brand-mark">
-          <img src="{% static 'branding/logo.png' %}" alt="Gusbo Logo">
-        </span>
+        <span class="site-brand-mark"><i class="bi bi-tools"></i></span>
         <span class="site-brand-copy">
-          <strong>Gusbo</strong>
+          <strong>UstaBul</strong>
           <small>Yerli Hizmet Platformu</small>
         </span>
       </a>

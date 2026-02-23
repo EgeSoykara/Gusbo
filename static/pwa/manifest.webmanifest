@@ -1,6 +1,6 @@
 {
-  "name": "Gusbo UstaBul",
-  "short_name": "Gusbo",
+  "name": "UstaBul",
+  "short_name": "UstaBul",
   "description": "Kuzey Kibris'ta musteriyi ve ustayi bulusturan hizmet platformu.",
   "start_url": "/",
   "scope": "/",
@@ -11,13 +11,13 @@
   "lang": "tr",
   "icons": [
     {
-      "src": "/static/branding/logo-192.png",
+      "src": "/static/pwa/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/static/branding/logo.png",
+      "src": "/static/pwa/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
