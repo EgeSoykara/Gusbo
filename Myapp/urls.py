@@ -3,6 +3,8 @@ from . import views
 
 urlpatterns = [
     path('', views.index, name='index'),
+    path('service-worker.js', views.service_worker, name='service_worker'),
+    path('offline/', views.offline, name='offline'),
     path('talep-olustur/', views.create_request, name='create_request'),
     path('talep/<int:request_id>/puanla/', views.rate_request, name='rate_request'),
     path('giris/', views.login_view, name='login'),

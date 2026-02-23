@@ -23,8 +23,8 @@
   --brand-strong: #0ea5e9;
   --accent: #fb923c;
   --accent-soft: #fdba74;
-  --text: #e5e7eb;
-  --text-soft: #93a4bb;
+  --text: #f8fafc;
+  --text-soft: #dbe7f3;
   --panel: rgba(15, 23, 42, 0.78);
   --panel-strong: #111827;
   --line: rgba(148, 163, 184, 0.22);
@@ -36,6 +36,9 @@
   --orb-a: rgba(34, 211, 238, 0.15);
   --orb-b: rgba(251, 146, 60, 0.14);
   --orb-c: rgba(96, 165, 250, 0.1);
+  --bs-body-color: #f8fafc;
+  --bs-secondary-color: #dbe7f3;
+  --bs-tertiary-color: #cbd5e1;
 }
 
 * {
@@ -132,9 +135,16 @@ h3,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  background: linear-gradient(140deg, var(--brand), var(--accent));
-  box-shadow: 0 10px 24px rgba(14, 116, 144, 0.34);
+  background: #fff;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 10px 24px rgba(14, 116, 144, 0.24);
+  overflow: hidden;
+}
+
+.site-brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .site-brand-copy {
@@ -252,6 +262,25 @@ h3,
 
 .logout-form {
   margin: 0;
+}
+
+.pwa-install-btn {
+  position: fixed;
+  right: 16px;
+  bottom: 18px;
+  z-index: 1200;
+  border: none;
+  border-radius: 999px;
+  padding: 11px 15px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(140deg, var(--brand), var(--brand-strong));
+  box-shadow: 0 12px 24px rgba(14, 116, 144, 0.32);
+}
+
+.pwa-install-btn:hover {
+  transform: translateY(-1px);
 }
 
 .hero-spotlight {
@@ -640,6 +669,70 @@ h3,
   overflow: hidden;
 }
 
+.auth-submit-btn {
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  border-radius: 12px;
+  background: #ffffff;
+  color: #0f172a;
+  font-weight: 800;
+  padding: 12px;
+}
+
+.auth-submit-btn:hover {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+[data-theme="dark"] .auth-submit-btn {
+  border-color: rgba(148, 163, 184, 0.34);
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+[data-theme="dark"] .auth-submit-btn:hover {
+  background: #ffffff;
+  color: #0f172a;
+}
+
+[data-theme="dark"] .auth-card {
+  background: rgba(2, 6, 23, 0.92);
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+[data-theme="dark"] .auth-card h1,
+[data-theme="dark"] .auth-card h2,
+[data-theme="dark"] .auth-card h3,
+[data-theme="dark"] .auth-card label,
+[data-theme="dark"] .auth-card p,
+[data-theme="dark"] .auth-card .small,
+[data-theme="dark"] .auth-card .text-muted {
+  color: #f8fafc !important;
+}
+
+[data-theme="dark"] .auth-card input,
+[data-theme="dark"] .auth-card select,
+[data-theme="dark"] .auth-card textarea {
+  background: #0f172a;
+  color: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.45);
+}
+
+[data-theme="dark"] .auth-card input::placeholder,
+[data-theme="dark"] .auth-card textarea::placeholder {
+  color: #cbd5e1;
+  opacity: 1;
+}
+
+[data-theme="dark"] .auth-card .hero-badge {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: #ffffff;
+}
+
+[data-theme="dark"] .auth-card .auth-link {
+  color: #93c5fd;
+}
+
 .auth-link {
   font-weight: 700;
   color: var(--brand-strong);
@@ -808,6 +901,50 @@ textarea:focus {
   background: rgba(34, 211, 238, 0.14);
 }
 
+[data-theme="dark"] .text-muted {
+  color: #e2e8f0 !important;
+}
+
+[data-theme="dark"] .form-label {
+  color: #f1f5f9;
+}
+
+[data-theme="dark"] p,
+[data-theme="dark"] small,
+[data-theme="dark"] .small,
+[data-theme="dark"] li,
+[data-theme="dark"] td,
+[data-theme="dark"] th,
+[data-theme="dark"] label,
+[data-theme="dark"] .card-body {
+  color: #e5e7eb;
+}
+
+[data-theme="dark"] .table {
+  --bs-table-color: #e5e7eb;
+  --bs-table-bg: transparent;
+  --bs-table-border-color: rgba(148, 163, 184, 0.25);
+}
+
+[data-theme="dark"] input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea {
+  color: #e5e7eb;
+  background: rgba(15, 23, 42, 0.86);
+  border-color: rgba(148, 163, 184, 0.38);
+}
+
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder {
+  color: #94a3b8;
+  opacity: 1;
+}
+
+[data-theme="dark"] select option {
+  color: #e5e7eb;
+  background: #0f172a;
+}
+
 .reveal-up {
   animation: revealUp 0.55s ease both;
 }
@@ -870,6 +1007,11 @@ textarea:focus {
 
   .sticky-form {
     position: static;
+  }
+
+  .pwa-install-btn {
+    right: 12px;
+    bottom: 14px;
   }
 }
 
