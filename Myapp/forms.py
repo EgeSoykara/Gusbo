@@ -171,7 +171,8 @@ class ProviderSignupForm(UserCreationForm):
         queryset=ServiceType.objects.all(),
         required=True,
         label="Verdiğin Hizmetler",
-        widget=forms.SelectMultiple(attrs={"size": 8}),
+        help_text="Birden fazla hizmeti tek tıkla seçebilirsiniz.",
+        widget=forms.CheckboxSelectMultiple(attrs={"class": "service-types-checklist"}),
     )
     description = forms.CharField(
         required=False,

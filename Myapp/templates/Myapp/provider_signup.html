@@ -61,7 +61,9 @@
         <div class="col-12">
           <label class="form-label">{{ form.service_types.label }}</label>
           {{ form.service_types }}
-          <p class="small text-muted mb-0 mt-1">Birden fazla hizmet seçmek için Ctrl / Cmd tuşunu kullanabilirsin.</p>
+          {% if form.service_types.help_text %}
+            <p class="small text-muted service-types-help mb-0 mt-1">{{ form.service_types.help_text }}</p>
+          {% endif %}
           {% for error in form.service_types.errors %}
             <div class="text-danger small">{{ error }}</div>
           {% endfor %}
