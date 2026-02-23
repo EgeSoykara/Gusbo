@@ -1,0 +1,391 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card panel-card shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+      <h1 class="h4 mb-0"><i class="bi bi-briefcase-fill me-2"></i>Usta Paneli</h1>
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="small text-muted">{{ provider.full_name }} - {{ provider.city }}/{{ provider.district }}</span>
+        <a href="{% url 'provider_profile' %}" class="btn btn-sm nav-ghost-btn"><i class="bi bi-person-vcard me-1"></i>Profili Düzenle</a>
+      </div>
+    </div>
+    <p class="mb-0 text-muted">Yeni talepler burada sıralı gelir. Teklif gönderip müşterinin seçmesini bekleyebilirsiniz.</p>
+  </div>
+</section>
+
+<div
+  id="provider-live-sync"
+  data-snapshot-url="{% url 'provider_panel_snapshot' %}"
+  data-pending-offers-count="{{ pending_offers|length }}"
+  data-latest-pending-offer-id="{% if pending_offers %}{{ pending_offers.0.id }}{% else %}0{% endif %}"
+  data-pending-appointments-count="{{ pending_appointments|length }}"
+  data-waiting-customer-appointments-count="{{ waiting_customer_appointments|length }}"
+></div>
+
+<section class="card panel-card shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3"><i class="bi bi-inbox-fill me-2"></i>Bekleyen Talepler</h2>
+    {% if pending_offers %}
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Talep No</th>
+              <th>Tarih</th>
+              <th>Süre Sonu</th>
+              <th>Hizmet</th>
+              <th>Konum</th>
+              <th>Müşteri</th>
+              <th>Detay</th>
+              <th>İşlem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for offer in pending_offers %}
+              <tr>
+                <td>#{{ offer.service_request.id }}</td>
+                <td>{{ offer.sent_at|date:"d.m.Y H:i" }}</td>
+                <td>
+                  {% if offer.expires_at %}
+                    {{ offer.expires_at|date:"d.m.Y H:i" }}
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+                <td>{{ offer.service_request.service_type.name }}</td>
+                <td>{{ offer.service_request.city }} / {{ offer.service_request.district }}</td>
+                <td>{{ offer.service_request.customer_name }}<br><span class="small text-muted">{{ offer.service_request.customer_phone }}</span></td>
+                <td>{{ offer.service_request.details|truncatechars:90 }}</td>
+                <td>
+                  <div class="request-actions-stack">
+                    <form method="post" action="{% url 'provider_accept_offer' offer.id %}">
+                      {% csrf_token %}
+                      <input type="number" min="1" step="0.01" name="quote_amount" class="appointment-note-input" placeholder="Teklif tutarı (TL)" required>
+                      <input type="text" name="quote_note" class="appointment-note-input mt-2" placeholder="Kısa teklif notu (opsiyonel)">
+                      <button type="submit" class="btn btn-sm request-complete-btn mt-2"><i class="bi bi-send-check me-1"></i>Teklif Gönder</button>
+                    </form>
+                    <form method="post" action="{% url 'provider_reject_offer' offer.id %}">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Red</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="mb-0 text-muted">Şu anda bekleyen talep yok.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card panel-card shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3"><i class="bi bi-chat-dots-fill me-2"></i>Aktif Mesajlaşmalar</h2>
+    {% if active_threads %}
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Talep No</th>
+              <th>Hizmet</th>
+              <th>Müşteri</th>
+              <th>Durum</th>
+              <th>Mesaj</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for thread in active_threads %}
+              <tr>
+                <td>#{{ thread.id }}</td>
+                <td>{{ thread.service_type.name }}</td>
+                <td>{{ thread.customer_name }}</td>
+                <td><span class="status-pill status-{{ thread.status }}">{{ thread.get_status_display }}</span></td>
+                <td>
+                  <a href="{% url 'request_messages' thread.id %}" class="btn btn-sm nav-ghost-btn">
+                    <i class="bi bi-chat-dots me-1"></i>Mesajları Aç
+                    {% if thread.unread_messages %}
+                      <span class="chat-unread-badge">{{ thread.unread_messages }}</span>
+                    {% endif %}
+                  </a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="mb-0 text-muted">Aktif mesajlaşma bulunmuyor.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card panel-card shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3"><i class="bi bi-calendar-week-fill me-2"></i>Bekleyen Randevu Talepleri</h2>
+    {% if pending_appointments %}
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Talep No</th>
+              <th>Hizmet</th>
+              <th>Müşteri</th>
+              <th>Randevu Saati</th>
+              <th>Not</th>
+              <th>İşlem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for appointment in pending_appointments %}
+              <tr>
+                <td>#{{ appointment.service_request.id }}</td>
+                <td>{{ appointment.service_request.service_type.name }}</td>
+                <td>{{ appointment.service_request.customer_name }}<br><span class="small text-muted">{{ appointment.service_request.customer_phone }}</span></td>
+                <td>{{ appointment.scheduled_for|date:"d.m.Y H:i" }}</td>
+                <td>{{ appointment.customer_note|default:"-"|truncatechars:70 }}</td>
+                <td>
+                  <div class="request-actions-stack">
+                    <form method="post" action="{% url 'provider_confirm_appointment' appointment.id %}">
+                      {% csrf_token %}
+                      <input type="text" name="provider_note" class="appointment-note-input" placeholder="Opsiyonel not">
+                      <button type="submit" class="btn btn-sm request-complete-btn mt-2">
+                        <i class="bi bi-check2-circle me-1"></i>Usta Onayı Ver
+                      </button>
+                    </form>
+                    <form method="post" action="{% url 'provider_reject_appointment' appointment.id %}">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-x-circle me-1"></i>Reddet
+                      </button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="mb-0 text-muted">Bekleyen randevu talebi yok.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card panel-card shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3"><i class="bi bi-hourglass-split me-2"></i>Müşteri Onayı Bekleyen Randevular</h2>
+    {% if waiting_customer_appointments %}
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Talep No</th>
+              <th>Hizmet</th>
+              <th>Müşteri</th>
+              <th>Randevu Saati</th>
+              <th>Durum</th>
+              <th>Not</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for appointment in waiting_customer_appointments %}
+              <tr>
+                <td>#{{ appointment.service_request.id }}</td>
+                <td>{{ appointment.service_request.service_type.name }}</td>
+                <td>{{ appointment.service_request.customer_name }}</td>
+                <td>{{ appointment.scheduled_for|date:"d.m.Y H:i" }}</td>
+                <td>
+                  <span class="status-pill appointment-status appointment-{{ appointment.status }}">
+                    {{ appointment.get_status_display }}
+                  </span>
+                </td>
+                <td>{{ appointment.provider_note|default:appointment.customer_note|default:"-"|truncatechars:80 }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="mb-0 text-muted">Müşteri onayı bekleyen randevu yok.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card panel-card shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3"><i class="bi bi-calendar-check-fill me-2"></i>Onaylı Randevular</h2>
+    {% if confirmed_appointments %}
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Talep No</th>
+              <th>Hizmet</th>
+              <th>Müşteri</th>
+              <th>Randevu Saati</th>
+              <th>Durum</th>
+              <th>İşlem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for appointment in confirmed_appointments %}
+              <tr>
+                <td>#{{ appointment.service_request.id }}</td>
+                <td>{{ appointment.service_request.service_type.name }}</td>
+                <td>{{ appointment.service_request.customer_name }}</td>
+                <td>{{ appointment.scheduled_for|date:"d.m.Y H:i" }}</td>
+                <td>
+                  <span class="status-pill appointment-status appointment-{{ appointment.status }}">
+                    {{ appointment.get_status_display }}
+                  </span>
+                </td>
+                <td>
+                  <form method="post" action="{% url 'provider_complete_appointment' appointment.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm request-complete-btn">
+                      <i class="bi bi-clipboard2-check me-1"></i>Tamamlandı İşaretle
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="mb-0 text-muted">Onaylı randevu bulunmuyor.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card panel-card shadow-sm reveal-up">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3"><i class="bi bi-clock-history me-2"></i>Son Yanıtlarım</h2>
+    {% if recent_offers %}
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Talep No</th>
+              <th>Hizmet</th>
+              <th>Fiyat</th>
+              <th>Durum</th>
+              <th>Yanıt Zamanı</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for offer in recent_offers %}
+              <tr>
+                <td>#{{ offer.service_request.id }}</td>
+                <td>{{ offer.service_request.service_type.name }}</td>
+                <td>
+                  {% if offer.quote_amount %}
+                    {{ offer.quote_amount }} TL
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+                <td><span class="status-pill status-{{ offer.status }}">{{ offer.get_status_display }}</span></td>
+                <td>{{ offer.responded_at|date:"d.m.Y H:i" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="mb-0 text-muted">Henüz cevaplanan teklif yok.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card panel-card shadow-sm reveal-up mt-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3"><i class="bi bi-calendar2-minus-fill me-2"></i>Randevu Geçmişi</h2>
+    {% if recent_appointments %}
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Talep No</th>
+              <th>Hizmet</th>
+              <th>Randevu Saati</th>
+              <th>Durum</th>
+              <th>Not</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for appointment in recent_appointments %}
+              <tr>
+                <td>#{{ appointment.service_request.id }}</td>
+                <td>{{ appointment.service_request.service_type.name }}</td>
+                <td>{{ appointment.scheduled_for|date:"d.m.Y H:i" }}</td>
+                <td>
+                  <span class="status-pill appointment-status appointment-{{ appointment.status }}">
+                    {{ appointment.get_status_display }}
+                  </span>
+                </td>
+                <td>{{ appointment.provider_note|default:appointment.customer_note|default:"-"|truncatechars:80 }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="mb-0 text-muted">Randevu geçmişi henüz oluşmadı.</p>
+    {% endif %}
+  </div>
+</section>
+<script>
+  (function () {
+    const syncRoot = document.getElementById("provider-live-sync");
+    if (!syncRoot) return;
+
+    const snapshotUrl = syncRoot.dataset.snapshotUrl;
+    if (!snapshotUrl) return;
+
+    let baseline = {
+      pendingOffersCount: Number(syncRoot.dataset.pendingOffersCount || 0),
+      latestPendingOfferId: Number(syncRoot.dataset.latestPendingOfferId || 0),
+      pendingAppointmentsCount: Number(syncRoot.dataset.pendingAppointmentsCount || 0),
+      waitingCustomerAppointmentsCount: Number(syncRoot.dataset.waitingCustomerAppointmentsCount || 0),
+    };
+
+    async function pollProviderPanel() {
+      if (document.hidden) return;
+      try {
+        const response = await fetch(snapshotUrl, {
+          method: "GET",
+          credentials: "same-origin",
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const payload = await response.json();
+        const nextState = {
+          pendingOffersCount: Number(payload.pending_offers_count || 0),
+          latestPendingOfferId: Number(payload.latest_pending_offer_id || 0),
+          pendingAppointmentsCount: Number(payload.pending_appointments_count || 0),
+          waitingCustomerAppointmentsCount: Number(payload.waiting_customer_appointments_count || 0),
+        };
+
+        const hasChanges =
+          nextState.pendingOffersCount !== baseline.pendingOffersCount ||
+          nextState.latestPendingOfferId !== baseline.latestPendingOfferId ||
+          nextState.pendingAppointmentsCount !== baseline.pendingAppointmentsCount ||
+          nextState.waitingCustomerAppointmentsCount !== baseline.waitingCustomerAppointmentsCount;
+
+        if (hasChanges) {
+          window.location.reload();
+        }
+      } catch (error) {
+        void error;
+      }
+    }
+
+    window.setInterval(pollProviderPanel, 8000);
+  })();
+</script>
+{% endblock %}
