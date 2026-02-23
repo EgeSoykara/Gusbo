@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card panel-card shadow-sm reveal-up mb-4 provider-detail-hero">
+  <div class="card-body p-4">
+    <div class="d-flex align-items-start justify-content-between flex-wrap gap-3">
+      <div>
+        <h1 class="h3 mb-2">{{ provider.full_name }}</h1>
+        <p class="mb-1 provider-location"><i class="bi bi-geo-alt-fill me-1"></i>{{ provider.city }} / {{ provider.district }}</p>
+        <p class="mb-0 provider-rating"><i class="bi bi-star-fill me-1"></i>{{ provider.rating }}/5 ({{ provider.ratings_count }} değerlendirme)</p>
+      </div>
+      <div class="provider-detail-actions">
+        <a href="tel:{{ provider.phone }}" class="btn btn-main"><i class="bi bi-telephone-fill me-1"></i>Hemen Ara</a>
+        <a href="{% url 'index' %}#talep-form" class="btn btn-main-dark"><i class="bi bi-send-check me-1"></i>Talep Oluştur</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="row g-4">
+  <div class="col-lg-8">
+    <div class="card panel-card shadow-sm reveal-up mb-4">
+      <div class="card-body p-4">
+        <h2 class="h5 mb-3"><i class="bi bi-tools me-2"></i>Hizmet Alanları</h2>
+        <div class="provider-services-list">
+          {% for service in provider.service_types.all %}
+            <span class="pill">{{ service.name }}</span>
+          {% empty %}
+            <span class="small text-muted">Hizmet alanı belirtilmemiş.</span>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="card panel-card shadow-sm reveal-up">
+      <div class="card-body p-4">
+        <h2 class="h5 mb-3"><i class="bi bi-chat-left-quote-fill me-2"></i>Müşteri Yorumları</h2>
+        {% if recent_ratings %}
+          <div class="provider-review-list">
+            {% for rating in recent_ratings %}
+              <article class="provider-review-item">
+                <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                  <strong>{{ rating.customer.username }}</strong>
+                  <span class="status-pill status-completed">{{ rating.score }}/5</span>
+                </div>
+                {% if rating.comment %}
+                  <p class="small mb-0 text-muted">{{ rating.comment }}</p>
+                {% else %}
+                  <p class="small mb-0 text-muted">Yorum bırakılmadı.</p>
+                {% endif %}
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="mb-0 text-muted">Henüz yorum bulunmuyor.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card panel-card shadow-sm reveal-up">
+      <div class="card-body p-4">
+        <h2 class="h6 mb-3"><i class="bi bi-graph-up-arrow me-2"></i>Usta Özeti</h2>
+        <div class="provider-stats-grid">
+          <div class="provider-stat-box">
+            <small>Tamamlanan İş</small>
+            <strong>{{ completed_jobs }}</strong>
+          </div>
+          <div class="provider-stat-box">
+            <small>Onaylı Teklif</small>
+            <strong>{{ successful_quotes }}</strong>
+          </div>
+          <div class="provider-stat-box">
+            <small>Ortalama Teklif</small>
+            <strong>
+              {% if avg_quote %}
+                {{ avg_quote|floatformat:0 }} TL
+              {% else %}
+                Yok
+              {% endif %}
+            </strong>
+          </div>
+          <div class="provider-stat-box">
+            <small>Durum</small>
+            <strong>{% if provider.is_available %}Müsait{% else %}Müsait Değil{% endif %}</strong>
+          </div>
+        </div>
+        {% if provider.description %}
+          <hr>
+          <h3 class="h6">Usta Açıklaması</h3>
+          <p class="small mb-0 text-muted">{{ provider.description }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

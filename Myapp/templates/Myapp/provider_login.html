@@ -3,8 +3,8 @@
 <section class="auth-wrap reveal-up">
   <div class="card panel-card auth-card shadow-sm">
     <div class="card-body p-4 p-md-5">
-      <span class="hero-badge"><i class="bi bi-tools"></i>USTA GIRISI</span>
-      <h1 class="mt-3 mb-2">Usta Paneline Giris</h1>
+      <span class="hero-badge"><i class="bi bi-tools"></i>USTA GİRİŞİ</span>
+      <h1 class="mt-3 mb-2">Usta Paneline Giriş</h1>
       <p class="text-muted mb-4">Yeni gelen talepleri panelden kabul veya red edebilirsiniz.</p>
 
       <form method="post" class="row g-3">
@@ -31,13 +31,17 @@
           </div>
         {% endif %}
         <div class="col-12">
-          <button type="submit" class="btn auth-submit-btn w-100"><i class="bi bi-box-arrow-in-right me-1"></i>Usta Girisi</button>
+          <button type="submit" class="btn auth-submit-btn w-100"><i class="bi bi-box-arrow-in-right me-1"></i>Usta Girişi</button>
         </div>
       </form>
 
       <p class="small mt-4 mb-0 text-muted">
-        Musteri girisi yapmak icin
-        <a href="{% url 'customer_login' %}" class="auth-link">tikla</a>
+        Müşteri girişi yapmak için
+        <a href="{% url 'customer_login' %}" class="auth-link">tıkla</a>
+      </p>
+      <p class="small mt-2 mb-0 text-muted">
+        Usta hesabın yok mu?
+        <a href="{% url 'provider_signup' %}" class="auth-link">Usta kaydı oluştur</a>
       </p>
     </div>
   </div>

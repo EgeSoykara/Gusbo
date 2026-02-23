@@ -2,7 +2,16 @@ from django import forms
 from django.contrib import admin
 
 from .constants import NC_CITY_CHOICES, NC_DISTRICT_CHOICES
-from .models import CustomerProfile, Provider, ProviderOffer, ProviderRating, ServiceRequest, ServiceType
+from .models import (
+    CustomerProfile,
+    Provider,
+    ProviderOffer,
+    ProviderRating,
+    ServiceAppointment,
+    ServiceMessage,
+    ServiceRequest,
+    ServiceType,
+)
 
 
 def with_existing_choice(choices, current_value):
@@ -12,8 +21,8 @@ def with_existing_choice(choices, current_value):
 
 
 class ProviderAdminForm(forms.ModelForm):
-    city = forms.ChoiceField(choices=NC_CITY_CHOICES, label="Sehir")
-    district = forms.ChoiceField(choices=NC_DISTRICT_CHOICES, label="Ilce")
+    city = forms.ChoiceField(choices=NC_CITY_CHOICES, label="Şehir")
+    district = forms.ChoiceField(choices=NC_DISTRICT_CHOICES, label="İlçe")
 
     class Meta:
         model = Provider
@@ -28,8 +37,8 @@ class ProviderAdminForm(forms.ModelForm):
 
 
 class ServiceRequestAdminForm(forms.ModelForm):
-    city = forms.ChoiceField(choices=NC_CITY_CHOICES, label="Sehir")
-    district = forms.ChoiceField(choices=NC_DISTRICT_CHOICES, label="Ilce")
+    city = forms.ChoiceField(choices=NC_CITY_CHOICES, label="Şehir")
+    district = forms.ChoiceField(choices=NC_DISTRICT_CHOICES, label="İlçe")
 
     class Meta:
         model = ServiceRequest
@@ -44,8 +53,8 @@ class ServiceRequestAdminForm(forms.ModelForm):
 
 
 class CustomerProfileAdminForm(forms.ModelForm):
-    city = forms.ChoiceField(choices=[("", "Sehir secin")] + NC_CITY_CHOICES, required=False, label="Sehir")
-    district = forms.ChoiceField(choices=[("", "Ilce secin")] + NC_DISTRICT_CHOICES, required=False, label="Ilce")
+    city = forms.ChoiceField(choices=[("", "Şehir seçin")] + NC_CITY_CHOICES, required=False, label="Şehir")
+    district = forms.ChoiceField(choices=[("", "İlçe seçin")] + NC_DISTRICT_CHOICES, required=False, label="İlçe")
 
     class Meta:
         model = CustomerProfile
@@ -55,8 +64,8 @@ class CustomerProfileAdminForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         city_value = self.instance.city if self.instance and self.instance.pk else None
         district_value = self.instance.district if self.instance and self.instance.pk else None
-        self.fields["city"].choices = with_existing_choice([("", "Sehir secin")] + list(NC_CITY_CHOICES), city_value)
-        self.fields["district"].choices = with_existing_choice([("", "Ilce secin")] + list(NC_DISTRICT_CHOICES), district_value)
+        self.fields["city"].choices = with_existing_choice([("", "Şehir seçin")] + list(NC_CITY_CHOICES), city_value)
+        self.fields["district"].choices = with_existing_choice([("", "İlçe seçin")] + list(NC_DISTRICT_CHOICES), district_value)
 
 
 @admin.register(ServiceType)
@@ -84,7 +93,7 @@ class ProviderAdmin(admin.ModelAdmin):
     search_fields = ("full_name", "user__username", "city", "district", "phone", "service_types__name")
     filter_horizontal = ("service_types",)
 
-    @admin.display(description="Hizmet Turleri")
+    @admin.display(description="Hizmet Türleri")
     def service_types_list(self, obj):
         return obj.service_types_display()
 
@@ -113,6 +122,31 @@ class ProviderRatingAdmin(admin.ModelAdmin):
 
 @admin.register(ProviderOffer)
 class ProviderOfferAdmin(admin.ModelAdmin):
-    list_display = ("service_request", "provider", "sequence", "status", "token", "sent_at", "responded_at")
+    list_display = (
+        "service_request",
+        "provider",
+        "sequence",
+        "status",
+        "quote_amount",
+        "expires_at",
+        "reminder_sent_at",
+        "token",
+        "sent_at",
+        "responded_at",
+    )
     list_filter = ("status", "provider__city")
-    search_fields = ("service_request__id", "provider__full_name", "token", "last_delivery_detail")
+    search_fields = ("service_request__id", "provider__full_name", "token", "last_delivery_detail", "quote_note")
+
+
+@admin.register(ServiceAppointment)
+class ServiceAppointmentAdmin(admin.ModelAdmin):
+    list_display = ("service_request", "provider", "customer", "scheduled_for", "status", "updated_at")
+    list_filter = ("status", "provider__city")
+    search_fields = ("service_request__id", "provider__full_name", "customer__username", "customer_note", "provider_note")
+
+
+@admin.register(ServiceMessage)
+class ServiceMessageAdmin(admin.ModelAdmin):
+    list_display = ("service_request", "sender_user", "sender_role", "created_at", "read_at")
+    list_filter = ("sender_role",)
+    search_fields = ("service_request__id", "sender_user__username", "body")

@@ -48,10 +48,11 @@ class Provider(models.Model):
 class ServiceRequest(models.Model):
     STATUS_CHOICES = (
         ("new", "Yeni"),
-        ("pending_provider", "Usta Onayi Bekleniyor"),
-        ("matched", "Eslestirildi"),
-        ("completed", "Tamamlandi"),
-        ("cancelled", "Iptal Edildi"),
+        ("pending_provider", "Usta Onayı Bekleniyor"),
+        ("pending_customer", "Müşteri Seçimi Bekleniyor"),
+        ("matched", "Eşleştirildi"),
+        ("completed", "Tamamlandı"),
+        ("cancelled", "İptal Edildi"),
     )
 
     customer_name = models.CharField(max_length=120)
@@ -84,13 +85,54 @@ class ServiceRequest(models.Model):
         return f"{self.customer_name} - {self.service_type.name}"
 
 
+class ServiceAppointment(models.Model):
+    STATUS_CHOICES = (
+        ("pending", "Usta Onayı Bekleniyor"),
+        ("pending_customer", "Müşteri Onayı Bekleniyor"),
+        ("confirmed", "Onaylandı"),
+        ("rejected", "Reddedildi"),
+        ("cancelled", "Müşteri İptal Etti"),
+        ("completed", "Tamamlandı"),
+    )
+
+    service_request = models.OneToOneField(
+        ServiceRequest,
+        on_delete=models.CASCADE,
+        related_name="appointment",
+    )
+    customer = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="appointments",
+    )
+    provider = models.ForeignKey(
+        Provider,
+        on_delete=models.CASCADE,
+        related_name="appointments",
+    )
+    scheduled_for = models.DateTimeField()
+    customer_note = models.TextField(blank=True)
+    provider_note = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["scheduled_for"]
+
+    def __str__(self):
+        return f"Randevu #{self.id} Talep {self.service_request_id} ({self.status})"
+
+
 class ProviderOffer(models.Model):
     STATUS_CHOICES = (
         ("pending", "Beklemede"),
         ("accepted", "Kabul"),
         ("rejected", "Red"),
-        ("expired", "Sure Doldu"),
-        ("failed", "Gonderim Basarisiz"),
+        ("expired", "Süre Doldu"),
+        ("failed", "Gönderim Başarısız"),
     )
 
     service_request = models.ForeignKey(ServiceRequest, on_delete=models.CASCADE, related_name="provider_offers")
@@ -98,8 +140,12 @@ class ProviderOffer(models.Model):
     token = models.CharField(max_length=24, unique=True)
     sequence = models.PositiveIntegerField(default=1)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    quote_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    quote_note = models.CharField(max_length=240, blank=True)
     last_delivery_detail = models.CharField(max_length=120, blank=True)
     sent_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    reminder_sent_at = models.DateTimeField(null=True, blank=True)
     responded_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -176,3 +222,23 @@ class ProviderRating(models.Model):
         provider_id = self.provider_id
         super().delete(*args, **kwargs)
         ProviderRating.refresh_provider_average(provider_id)
+
+
+class ServiceMessage(models.Model):
+    SENDER_ROLE_CHOICES = (
+        ("customer", "Müşteri"),
+        ("provider", "Usta"),
+    )
+
+    service_request = models.ForeignKey(ServiceRequest, on_delete=models.CASCADE, related_name="messages")
+    sender_user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="service_messages")
+    sender_role = models.CharField(max_length=20, choices=SENDER_ROLE_CHOICES)
+    body = models.TextField(max_length=1000)
+    created_at = models.DateTimeField(auto_now_add=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"Mesaj #{self.id} Talep {self.service_request_id} ({self.sender_role})"

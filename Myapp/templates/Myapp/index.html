@@ -3,38 +3,38 @@
 <section class="hero-spotlight reveal-up">
   <div class="hero-layout">
     <div class="hero-copy">
-      <span class="hero-badge"><i class="bi bi-lightning-charge-fill"></i>ANINDA HIZMET AGI</span>
-      <h1>Mahallendeki En Iyi Ustalari <span>Tek Ekranda</span> Yakalayin</h1>
-      <p>Kuzey Kibris genelinde tesisat, elektrik ve ev ici teknik islerde saniyeler icinde filtrele, puanlari karsilastir ve talep ac.</p>
+      <span class="hero-badge"><i class="bi bi-lightning-charge-fill"></i>HIZLI USTA BUL</span>
+      <h1>Mahallendeki En İyi Ustaları <span>Tek Ekranda</span> Görün</h1>
+      <p>Kuzey Kıbrıs genelinde hizmet türüne göre filtreleyin, ustaları karşılaştırın ve dakikalar içinde talep açın.</p>
       <div class="hero-actions">
         <a class="btn hero-btn hero-btn-solid" href="#search-panel"><i class="bi bi-search me-1"></i>Usta Ara</a>
-        <a class="btn hero-btn hero-btn-outline" href="#talep-form"><i class="bi bi-send-check me-1"></i>Talep Ac</a>
+        <a class="btn hero-btn hero-btn-outline" href="#talep-form"><i class="bi bi-send-check me-1"></i>Talep Aç</a>
       </div>
       <div class="trust-ribbon">
-        <span><i class="bi bi-shield-check"></i>Dogrulanmis Profiller</span>
-        <span><i class="bi bi-stopwatch"></i>Hizli Donus</span>
-        <span><i class="bi bi-star"></i>Gercek Musteri Puani</span>
+        <span><i class="bi bi-shield-check"></i>Doğrulanmış Profiller</span>
+        <span><i class="bi bi-stopwatch"></i>Hızlı Dönüş</span>
+        <span><i class="bi bi-star"></i>Gerçek Müşteri Puanı</span>
       </div>
     </div>
     <aside class="hero-metrics">
       <div class="metric-card">
-        <p class="metric-top"><i class="bi bi-people-fill"></i>Su an platformda</p>
+        <p class="metric-top"><i class="bi bi-people-fill"></i>Şu an platformda</p>
         <p class="metric-value">{{ providers|length }}</p>
         <p class="metric-note">aktif usta listeleniyor</p>
       </div>
       <div class="metric-card">
         <p class="metric-top"><i class="bi bi-headset"></i>Destek merkezi</p>
         <p class="metric-value">24/7</p>
-        <p class="metric-note">anlik canli destek</p>
+        <p class="metric-note">anlık canlı destek</p>
       </div>
     </aside>
   </div>
 </section>
 
 <section class="status-strip reveal-up delay-1">
-  <div class="status-item"><i class="bi bi-geo-alt-fill"></i>Kuzey Kibris sehirlerine gore filtreleme</div>
-  <div class="status-item"><i class="bi bi-check2-circle"></i>Hizmet turune gore net filtreleme</div>
-  <div class="status-item"><i class="bi bi-chat-left-dots-fill"></i>Talep olusturunca otomatik eslestirme</div>
+  <div class="status-item"><i class="bi bi-geo-alt-fill"></i>Şehir ve ilçe bazında filtreleme</div>
+  <div class="status-item"><i class="bi bi-check2-circle"></i>Hizmet türüne göre net liste</div>
+  <div class="status-item"><i class="bi bi-chat-left-dots-fill"></i>Talep sonrası hızlı eşleşme</div>
 </section>
 
 <section class="row g-4 align-items-start">
@@ -43,15 +43,40 @@
       <div class="card-body">
         <h2 class="h5 mb-3 section-title"><i class="bi bi-search me-2"></i>Usta Ara</h2>
         <form method="get" class="row g-3 search-form" id="search-form">
-          <div class="col-lg-4">
+          <div class="col-lg-6">
             <label class="form-label">{{ search_form.service_type.label }}</label>
-            {{ search_form.service_type }}
+            <div class="service-picker">
+              <div class="service-filter-shell">
+                <i class="bi bi-search"></i>
+                <input
+                  type="search"
+                  class="service-filter-input"
+                  data-service-type-filter
+                  placeholder="Hizmet ara (örnek: klima, kombi, elektrik)"
+                  autocomplete="off"
+                >
+              </div>
+              {{ search_form.service_type }}
+              <p class="service-picker-note mb-0">Yazarak filtreleyin veya öne çıkanlardan seçin.</p>
+              {% if popular_service_types %}
+                <div class="quick-service-wrap">
+                  <span class="quick-service-label">Öne Çıkan Hizmetler</span>
+                  <div class="quick-service-list">
+                    {% for service_type in popular_service_types %}
+                      <button type="button" class="quick-service-btn" data-service-choice="{{ service_type.id }}">
+                        {{ service_type.name }}
+                      </button>
+                    {% endfor %}
+                  </div>
+                </div>
+              {% endif %}
+            </div>
           </div>
-          <div class="col-lg-4">
+          <div class="col-lg-3">
             <label class="form-label">{{ search_form.city.label }}</label>
             {{ search_form.city }}
           </div>
-          <div class="col-lg-4">
+          <div class="col-lg-3">
             <label class="form-label">{{ search_form.district.label }}</label>
             {{ search_form.district }}
           </div>
@@ -69,9 +94,9 @@
     <div class="card panel-card shadow-sm mt-4 reveal-up delay-2">
       <div class="card-body">
         <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-          <h2 class="h5 mb-0 section-title"><i class="bi bi-person-workspace me-2"></i>Musait Ustalar</h2>
+          <h2 class="h5 mb-0 section-title"><i class="bi bi-person-workspace me-2"></i>Müsait Ustalar</h2>
           {% if location_used %}
-            <span class="result-badge"><i class="bi bi-compass-fill me-1"></i>Mesafeye Gore Siralandi</span>
+            <span class="result-badge"><i class="bi bi-compass-fill me-1"></i>Mesafeye Göre Sıralandı</span>
           {% endif %}
         </div>
         {% if providers %}
@@ -98,18 +123,24 @@
                   {% endif %}
                   <p class="small mb-1 provider-rating">
                     <i class="bi bi-star-fill me-1"></i>Ortalama Puan: {{ provider.rating }} / 5
-                    <span class="rating-count">({{ provider.ratings_count }} degerlendirme)</span>
+                    <span class="rating-count">({{ provider.ratings_count }} değerlendirme)</span>
                   </p>
+                  {% if provider.avg_quote %}
+                    <p class="small mb-1 provider-quote"><i class="bi bi-cash-coin me-1"></i>Tahmini Teklif Ort.: {{ provider.avg_quote|floatformat:0 }} TL</p>
+                  {% endif %}
                   <div class="provider-bottom">
                     <p class="small mb-0 provider-phone"><i class="bi bi-telephone-fill me-1"></i><strong>{{ provider.phone }}</strong></p>
-                    <a href="tel:{{ provider.phone }}" class="btn btn-sm provider-call-btn">Ara</a>
+                    <div class="provider-actions">
+                      <a href="{% url 'provider_detail' provider.id %}" class="btn btn-sm provider-profile-btn">Profili Gör</a>
+                      <a href="tel:{{ provider.phone }}" class="btn btn-sm provider-call-btn">Ara</a>
+                    </div>
                   </div>
                 </article>
               </div>
             {% endfor %}
           </div>
         {% else %}
-          <p class="mb-0">Kriterlere uygun usta bulunamadi.</p>
+          <p class="mb-0">Kriterlere uygun usta bulunamadı.</p>
         {% endif %}
       </div>
     </div>
@@ -120,7 +151,7 @@
       <div class="card panel-card shadow-sm sticky-form reveal-up delay-3">
         <div class="card-body">
           <h2 class="h5 mb-3 section-title"><i class="bi bi-tools me-2"></i>Usta Modu</h2>
-          <p class="mb-3">Usta hesabi ile giris yaptiginiz icin talep olusturma kapali.</p>
+          <p class="mb-3">Usta hesabı ile giriş yaptığınız için talep oluşturma kapalı.</p>
           <a href="{% url 'provider_requests' %}" class="btn btn-main-dark w-100">
             <i class="bi bi-briefcase-fill me-2"></i>Usta Paneline Git
           </a>
@@ -129,9 +160,9 @@
     {% else %}
       <div class="card panel-card shadow-sm sticky-form reveal-up delay-3" id="talep-form">
         <div class="card-body">
-          <h2 class="h5 mb-3 section-title"><i class="bi bi-send-check-fill me-2"></i>Hizmet Talebi Olustur</h2>
+          <h2 class="h5 mb-3 section-title"><i class="bi bi-send-check-fill me-2"></i>Hizmet Talebi Oluştur</h2>
           {% if request.user.is_authenticated %}
-            <p class="small text-muted mb-3"><i class="bi bi-person-check-fill me-1"></i>Giris yaptigin icin bilgiler otomatik dolduruldu.</p>
+            <p class="small text-muted mb-3"><i class="bi bi-person-check-fill me-1"></i>Giriş yaptığın için bilgiler otomatik dolduruldu.</p>
           {% endif %}
           <form method="post" action="{% url 'create_request' %}" class="row g-3" id="request-form">
             {% csrf_token %}
@@ -145,13 +176,45 @@
             <div class="col-12">
               <label class="form-label">{{ request_form.customer_phone.label }}</label>
               {{ request_form.customer_phone }}
+              {% if request_form.customer_phone.help_text %}
+                <div class="phone-field-guide">
+                  <div class="phone-field-guide-title"><i class="bi bi-info-circle-fill me-1"></i>Telefon Formatı</div>
+                  <p>{{ request_form.customer_phone.help_text }}</p>
+                  <p class="mb-0">Boşluk veya tire kullansan da sistem numarayı otomatik düzeltir.</p>
+                </div>
+              {% endif %}
               {% for error in request_form.customer_phone.errors %}
                 <div class="text-danger small">{{ error }}</div>
               {% endfor %}
             </div>
             <div class="col-12">
               <label class="form-label">{{ request_form.service_type.label }}</label>
-              {{ request_form.service_type }}
+              <div class="service-picker">
+                <div class="service-filter-shell">
+                  <i class="bi bi-search"></i>
+                  <input
+                    type="search"
+                    class="service-filter-input"
+                    data-service-type-filter
+                    placeholder="Hizmet ara (örnek: tesisat, boya, montaj)"
+                    autocomplete="off"
+                  >
+                </div>
+                {{ request_form.service_type }}
+                <p class="service-picker-note mb-0">Yazarak filtreleyin veya öne çıkanlardan seçin.</p>
+                {% if popular_service_types %}
+                  <div class="quick-service-wrap">
+                    <span class="quick-service-label">Öne Çıkan Hizmetler</span>
+                    <div class="quick-service-list">
+                      {% for service_type in popular_service_types %}
+                        <button type="button" class="quick-service-btn" data-service-choice="{{ service_type.id }}">
+                          {{ service_type.name }}
+                        </button>
+                      {% endfor %}
+                    </div>
+                  </div>
+                {% endif %}
+              </div>
               {% for error in request_form.service_type.errors %}
                 <div class="text-danger small">{{ error }}</div>
               {% endfor %}
@@ -178,7 +241,7 @@
               {% endfor %}
             </div>
             <div class="col-12">
-              <button type="submit" class="btn btn-dark w-100 btn-main-dark"><i class="bi bi-send-fill me-2"></i>Talep Gonder</button>
+              <button type="submit" class="btn btn-dark w-100 btn-main-dark"><i class="bi bi-send-fill me-2"></i>Talep Gönder</button>
             </div>
           </form>
         </div>
@@ -191,6 +254,94 @@
   (function () {
     const cityDistrictMapElement = document.getElementById("city-district-map");
     const cityDistrictMap = cityDistrictMapElement ? JSON.parse(cityDistrictMapElement.textContent) : {};
+
+    function setupServiceTypePickerByForm(formId) {
+      const form = document.getElementById(formId);
+      if (!form) return;
+
+      const serviceSelect = form.querySelector("select[name='service_type']");
+      if (!serviceSelect) return;
+
+      const filterInput = form.querySelector("input[data-service-type-filter]");
+      const quickButtons = form.querySelectorAll("button[data-service-choice]");
+      const baseOptions = Array.from(serviceSelect.options).map(function (option) {
+        return {
+          value: option.value,
+          text: option.textContent,
+        };
+      });
+
+      function normalizeText(text) {
+        return (text || "").toLocaleLowerCase("tr-TR");
+      }
+
+      function syncQuickButtons() {
+        quickButtons.forEach(function (button) {
+          const isActive = button.getAttribute("data-service-choice") === serviceSelect.value;
+          button.classList.toggle("is-active", isActive);
+        });
+      }
+
+      function renderOptions(query) {
+        const previousValue = serviceSelect.value;
+        const normalizedQuery = normalizeText(query).trim();
+        serviceSelect.innerHTML = "";
+
+        let matchCount = 0;
+        baseOptions.forEach(function (item) {
+          const isPlaceholder = item.value === "";
+          const matches = normalizedQuery === "" || isPlaceholder || normalizeText(item.text).includes(normalizedQuery);
+          if (!matches) return;
+
+          const option = document.createElement("option");
+          option.value = item.value;
+          option.textContent = item.text;
+          serviceSelect.appendChild(option);
+
+          if (!isPlaceholder) matchCount += 1;
+        });
+
+        if (matchCount === 0) {
+          serviceSelect.innerHTML = "";
+          const emptyOption = document.createElement("option");
+          emptyOption.value = "";
+          emptyOption.textContent = "Eşleşen hizmet bulunamadı";
+          serviceSelect.appendChild(emptyOption);
+        }
+
+        const selectedStillExists = Array.from(serviceSelect.options).some(function (option) {
+          return option.value === previousValue;
+        });
+        serviceSelect.value = selectedStillExists ? previousValue : "";
+        syncQuickButtons();
+      }
+
+      if (filterInput) {
+        filterInput.addEventListener("input", function () {
+          renderOptions(filterInput.value);
+        });
+        renderOptions(filterInput.value);
+      }
+
+      quickButtons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          const serviceValue = button.getAttribute("data-service-choice") || "";
+          if (filterInput) {
+            filterInput.value = "";
+            renderOptions("");
+          }
+          serviceSelect.value = serviceValue;
+          serviceSelect.dispatchEvent(new Event("change", { bubbles: true }));
+          syncQuickButtons();
+        });
+      });
+
+      serviceSelect.addEventListener("change", syncQuickButtons);
+      syncQuickButtons();
+    }
+
+    setupServiceTypePickerByForm("search-form");
+    setupServiceTypePickerByForm("request-form");
 
     function setupCityDistrictByForm(formId) {
       const form = document.getElementById(formId);
@@ -208,7 +359,7 @@
 
         const emptyOption = document.createElement("option");
         emptyOption.value = "";
-        emptyOption.textContent = "Ilce secin";
+        emptyOption.textContent = "İlçe seçin";
         districtSelect.appendChild(emptyOption);
 
         const anyOption = document.createElement("option");
@@ -246,19 +397,19 @@
 
     locationBtn.addEventListener("click", function () {
       if (!navigator.geolocation) {
-        status.textContent = "Tarayici konum desteklemiyor.";
+        status.textContent = "Tarayıcı konum desteklemiyor.";
         return;
       }
-      status.textContent = "Konum aliniyor...";
+      status.textContent = "Konum alınıyor...";
       navigator.geolocation.getCurrentPosition(
         function (position) {
           latInput.value = position.coords.latitude.toFixed(6);
           lonInput.value = position.coords.longitude.toFixed(6);
-          status.textContent = "Konum alindi, liste guncelleniyor.";
+          status.textContent = "Konum alındı, liste güncelleniyor.";
           searchForm.submit();
         },
         function () {
-          status.textContent = "Konum izni verilmedi veya alinamadi.";
+          status.textContent = "Konum izni verilmedi veya alınamadı.";
         }
       );
     });

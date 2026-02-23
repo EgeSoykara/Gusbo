@@ -9,7 +9,7 @@
           <form method="post" action="{% url 'delete_all_cancelled_requests' %}" class="m-0">
             {% csrf_token %}
             <button type="submit" class="btn btn-outline-danger">
-              <i class="bi bi-trash3 me-1"></i>Iptalleri Sil ({{ cancelled_count }})
+              <i class="bi bi-trash3 me-1"></i>İptalleri Sil ({{ cancelled_count }})
             </button>
           </form>
         {% endif %}
@@ -25,8 +25,9 @@
               <th>Hizmet</th>
               <th>Konum</th>
               <th>Durum</th>
-              <th>Eslesen Usta</th>
-              <th>Islemler</th>
+              <th>Eşleşen Usta</th>
+              <th>Randevu</th>
+              <th>İşlemler</th>
             </tr>
           </thead>
           <tbody>
@@ -39,59 +40,191 @@
                 <td>
                   {% if item.matched_provider %}
                     {{ item.matched_provider.full_name }} ({{ item.matched_provider.phone }})
+                  {% elif item.status == "pending_customer" and item.accepted_offers %}
+                    {{ item.accepted_offers|length }} teklif geldi
                   {% elif item.status == "pending_provider" and item.pending_offer %}
-                    Sirada: {{ item.pending_offer.provider.full_name }} (onay bekleniyor)
+                    Ustalardan teklif bekleniyor
                   {% else %}
-                    Henuz eslesmedi
+                    Henüz eşleşmedi
+                  {% endif %}
+                </td>
+                <td>
+                  {% if item.appointment_entry %}
+                    <div class="small fw-semibold">{{ item.appointment_entry.scheduled_for|date:"d.m.Y H:i" }}</div>
+                    <span class="status-pill appointment-status appointment-{{ item.appointment_entry.status }}">
+                      {{ item.appointment_entry.get_status_display }}
+                    </span>
+                    {% if item.appointment_entry.customer_note %}
+                      <div class="small text-muted mt-1">Not: {{ item.appointment_entry.customer_note }}</div>
+                    {% endif %}
+                    {% if item.appointment_entry.provider_note %}
+                      <div class="small text-muted">Usta notu: {{ item.appointment_entry.provider_note }}</div>
+                    {% endif %}
+                  {% elif item.status == "matched" %}
+                    <span class="small text-muted">Henüz randevu alınmadı</span>
+                  {% else %}
+                    <span class="small text-muted">-</span>
                   {% endif %}
                 </td>
                 <td>
                   {% if item.status == "matched" %}
-                    <form method="post" action="{% url 'complete_request' item.id %}" class="m-0">
-                      {% csrf_token %}
-                      <button type="submit" class="btn btn-sm request-complete-btn">
-                        <i class="bi bi-check2-circle me-1"></i>Tamamlandi
-                      </button>
-                    </form>
-                  {% elif item.status == "completed" %}
-                    {% if item.matched_provider %}
-                      {% if item.rating_entry %}
-                        <div class="small">
-                          <strong>Oy verildi:</strong> {{ item.rating_entry.score }}/5
-                          {% if item.rating_entry.comment %}
-                            <br><span class="text-muted">{{ item.rating_entry.comment }}</span>
+                    <div class="request-actions-stack">
+                      <a href="{% url 'request_messages' item.id %}" class="btn btn-sm nav-ghost-btn">
+                        <i class="bi bi-chat-dots me-1"></i>Mesajlar
+                        {% if item.unread_messages %}
+                          <span class="chat-unread-badge">{{ item.unread_messages }}</span>
+                        {% endif %}
+                      </a>
+                      <form method="post" action="{% url 'complete_request' item.id %}" class="m-0">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm request-complete-btn">
+                          <i class="bi bi-check2-circle me-1"></i>Tamamlandı
+                        </button>
+                      </form>
+
+                      {% if item.appointment_entry %}
+                        {% if item.appointment_entry.status == "pending" or item.appointment_entry.status == "pending_customer" or item.appointment_entry.status == "confirmed" %}
+                          {% if item.appointment_entry.status == "pending_customer" %}
+                            <form method="post" action="{% url 'customer_confirm_appointment' item.id %}" class="m-0">
+                              {% csrf_token %}
+                              <button type="submit" class="btn btn-sm request-complete-btn">
+                                <i class="bi bi-patch-check me-1"></i>Randevuyu Onayla
+                              </button>
+                            </form>
                           {% endif %}
-                        </div>
+                          <form method="post" action="{% url 'cancel_appointment' item.id %}" class="m-0">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                              <i class="bi bi-calendar-x me-1"></i>Randevuyu İptal Et
+                            </button>
+                          </form>
+                          <form method="post" action="{% url 'create_appointment' item.id %}" class="appointment-create-form">
+                            {% csrf_token %}
+                            <input
+                              type="datetime-local"
+                              name="scheduled_for"
+                              value="{{ item.appointment_entry.scheduled_for|date:'Y-m-d\\TH:i' }}"
+                              required
+                            >
+                            <textarea name="customer_note" rows="2" placeholder="Randevu notu (isteğe bağlı)">{{ item.appointment_entry.customer_note }}</textarea>
+                            <button type="submit" class="btn btn-sm btn-main">
+                              <i class="bi bi-calendar-event me-1"></i>Randevuyu Güncelle
+                            </button>
+                          </form>
+                        {% elif item.appointment_entry.status == "rejected" or item.appointment_entry.status == "cancelled" %}
+                          <form method="post" action="{% url 'create_appointment' item.id %}" class="appointment-create-form">
+                            {% csrf_token %}
+                            <input type="datetime-local" name="scheduled_for" required>
+                            <textarea name="customer_note" rows="2" placeholder="Randevu notu (isteğe bağlı)"></textarea>
+                            <button type="submit" class="btn btn-sm btn-main">
+                              <i class="bi bi-calendar-plus me-1"></i>Tekrar Randevu Al
+                            </button>
+                          </form>
+                        {% endif %}
                       {% else %}
-                        <form method="post" action="{% url 'rate_request' item.id %}" class="request-rate-form">
+                        <form method="post" action="{% url 'create_appointment' item.id %}" class="appointment-create-form">
                           {% csrf_token %}
-                          <div class="request-rate-row">
-                            <select name="score" required>
-                              <option value="">Puan</option>
-                              <option value="5">5</option>
-                              <option value="4">4</option>
-                              <option value="3">3</option>
-                              <option value="2">2</option>
-                              <option value="1">1</option>
-                            </select>
-                            <button type="submit" class="btn btn-sm request-rate-btn">Puanla</button>
-                          </div>
-                          <textarea name="comment" rows="2" placeholder="Yorum (istege bagli)"></textarea>
+                          <input type="datetime-local" name="scheduled_for" required>
+                          <textarea name="customer_note" rows="2" placeholder="Randevu notu (isteğe bağlı)"></textarea>
+                          <button type="submit" class="btn btn-sm btn-main">
+                            <i class="bi bi-calendar-plus me-1"></i>Randevu Al
+                          </button>
                         </form>
                       {% endif %}
+                    </div>
+                  {% elif item.status == "completed" %}
+                    {% if item.matched_provider %}
+                      <div class="request-actions-stack">
+                        <a href="{% url 'request_messages' item.id %}" class="btn btn-sm nav-ghost-btn">
+                          <i class="bi bi-chat-dots me-1"></i>Mesajlar
+                          {% if item.unread_messages %}
+                            <span class="chat-unread-badge">{{ item.unread_messages }}</span>
+                          {% endif %}
+                        </a>
+                        {% if item.rating_entry %}
+                          <div class="small">
+                            <strong>Oy verildi:</strong> {{ item.rating_entry.score }}/5
+                            {% if item.rating_entry.comment %}
+                              <br><span class="text-muted">{{ item.rating_entry.comment }}</span>
+                            {% endif %}
+                          </div>
+                        {% else %}
+                          <form method="post" action="{% url 'rate_request' item.id %}" class="request-rate-form">
+                            {% csrf_token %}
+                            <div class="request-rate-row">
+                              <select name="score" required>
+                                <option value="">Puan</option>
+                                <option value="5">5</option>
+                                <option value="4">4</option>
+                                <option value="3">3</option>
+                                <option value="2">2</option>
+                                <option value="1">1</option>
+                              </select>
+                              <button type="submit" class="btn btn-sm request-rate-btn">Puanla</button>
+                            </div>
+                            <textarea name="comment" rows="2" placeholder="Yorum (isteğe bağlı)"></textarea>
+                          </form>
+                        {% endif %}
+                      </div>
                     {% else %}
                       <span class="small text-muted">Usta yok</span>
                     {% endif %}
+                  {% elif item.status == "pending_customer" %}
+                    <div class="request-actions-stack">
+                      {% if item.accepted_offers %}
+                        {% for offer in item.accepted_offers %}
+                          <form method="post" action="{% url 'select_provider_offer' item.id offer.id %}" class="offer-select-form">
+                            {% csrf_token %}
+                            <div class="offer-select-head">
+                              <strong>{{ offer.provider.full_name }}</strong>
+                              <a href="{% url 'provider_detail' offer.provider.id %}" class="offer-profile-link">Profili</a>
+                              {% if item.recommended_offer_id == offer.id %}
+                                <span class="offer-badge">Önerilen</span>
+                              {% endif %}
+                              {% if offer.quote_amount %}
+                                <span class="offer-price">{{ offer.quote_amount }} TL</span>
+                              {% else %}
+                                <span class="offer-price">Fiyat belirtilmedi</span>
+                              {% endif %}
+                            </div>
+                            <div class="offer-score mb-2">
+                              <span>Karşılaştırma Puanı:</span>
+                              <strong>{{ offer.comparison_score }}/100</strong>
+                            </div>
+                            <div class="offer-score-breakdown mb-2">
+                              <span>Fiyat {{ offer.price_score }}</span>
+                              <span>Puan {{ offer.rating_score }}</span>
+                              <span>Hız {{ offer.speed_score }}</span>
+                            </div>
+                            <div class="small text-muted mb-2">Usta puanı: {{ offer.provider.rating }}/5</div>
+                            {% if offer.quote_note %}
+                              <div class="small text-muted mb-2">{{ offer.quote_note }}</div>
+                            {% endif %}
+                            <button type="submit" class="btn btn-sm btn-main">
+                              <i class="bi bi-person-check me-1"></i>Bu Ustayı Seç
+                            </button>
+                          </form>
+                        {% endfor %}
+                      {% else %}
+                        <span class="small text-muted">Henüz onaylı teklif yok.</span>
+                      {% endif %}
+                      <form method="post" action="{% url 'cancel_request' item.id %}" class="m-0">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                          <i class="bi bi-x-circle me-1"></i>Talebi İptal Et
+                        </button>
+                      </form>
+                    </div>
                   {% elif item.status == "new" or item.status == "pending_provider" %}
                     <form method="post" action="{% url 'cancel_request' item.id %}" class="m-0">
                       {% csrf_token %}
                       <button type="submit" class="btn btn-sm btn-outline-danger">
-                        <i class="bi bi-x-circle me-1"></i>Aramayi Iptal Et
+                        <i class="bi bi-x-circle me-1"></i>Aramayı İptal Et
                       </button>
                     </form>
                   {% else %}
                     {% if item.status == "pending_provider" %}
-                      <span class="small text-warning fw-semibold">Usta onayi bekleniyor</span>
+                      <span class="small text-warning fw-semibold">Usta onayı bekleniyor</span>
                     {% elif item.status == "cancelled" %}
                       <form method="post" action="{% url 'delete_cancelled_request' item.id %}" class="m-0">
                         {% csrf_token %}
@@ -110,7 +243,7 @@
         </table>
       </div>
     {% else %}
-      <p class="mb-0 text-muted">Henuz talebin yok. Ana sayfadan yeni talep olusturabilirsin.</p>
+      <p class="mb-0 text-muted">Henüz talebin yok. Ana sayfadan yeni talep oluşturabilirsin.</p>
     {% endif %}
   </div>
 </section>
