@@ -1045,3 +1045,28 @@ class MarketplaceTests(TestCase):
         self.client.login(username="normaluser", password="GucluSifre123!")
         response = self.client.get(reverse("provider_panel_snapshot"))
         self.assertEqual(response.status_code, 403)
+
+    def test_customer_requests_snapshot_returns_signature(self):
+        customer = User.objects.create_user(username="snapshotcustomer", password="GucluSifre123!")
+        ServiceRequest.objects.create(
+            customer_name="Snapshot Musteri",
+            customer_phone="05001234567",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Snapshot test",
+            customer=customer,
+            status="pending_provider",
+        )
+
+        self.client.login(username="snapshotcustomer", password="GucluSifre123!")
+        response = self.client.get(reverse("customer_requests_snapshot"))
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("signature", payload)
+        self.assertTrue(payload["signature"])
+
+    def test_customer_requests_snapshot_forbidden_for_provider(self):
+        self.client.login(username="aliusta", password="GucluSifre123!")
+        response = self.client.get(reverse("customer_requests_snapshot"))
+        self.assertEqual(response.status_code, 403)

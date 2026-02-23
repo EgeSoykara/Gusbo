@@ -1172,7 +1172,7 @@ h3,
   backdrop-filter: blur(8px);
 }
 
-input,
+input:not([type="checkbox"]):not([type="radio"]),
 select,
 textarea {
   width: 100%;
@@ -1184,7 +1184,7 @@ textarea {
   transition: 0.22s ease;
 }
 
-input:focus,
+input:not([type="checkbox"]):not([type="radio"]):focus,
 select:focus,
 textarea:focus {
   outline: none;
@@ -1311,6 +1311,74 @@ textarea:focus {
 .provider-detail-actions .btn-main-dark:hover,
 .provider-detail-actions .btn-main-dark:focus {
   color: #ffffff;
+}
+
+.service-types-checklist {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.service-types-checklist > div {
+  margin: 0;
+}
+
+.service-types-checklist label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #d7dee7;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.service-types-checklist label:hover {
+  border-color: #94a3b8;
+  background: #f1f5f9;
+}
+
+.service-types-checklist input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #0f172a;
+  cursor: pointer;
+}
+
+.service-types-checklist input[type="checkbox"]:checked + * {
+  color: #0f172a;
+}
+
+.service-types-help {
+  color: #64748b;
+}
+
+[data-theme="dark"] .service-types-checklist label {
+  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.72);
+  color: #dbe7f3;
+}
+
+[data-theme="dark"] .service-types-checklist label:hover {
+  border-color: rgba(96, 165, 250, 0.48);
+  background: rgba(30, 41, 59, 0.86);
+}
+
+[data-theme="dark"] .service-types-checklist input[type="checkbox"] {
+  accent-color: #60a5fa;
+}
+
+[data-theme="dark"] .service-types-help {
+  color: #cbd5e1;
 }
 
 .provider-services-list {
@@ -1448,7 +1516,7 @@ textarea:focus {
   --bs-table-border-color: rgba(148, 163, 184, 0.25);
 }
 
-[data-theme="dark"] input,
+[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]),
 [data-theme="dark"] select,
 [data-theme="dark"] textarea {
   color: #e5e7eb;
@@ -1456,7 +1524,7 @@ textarea:focus {
   border-color: rgba(148, 163, 184, 0.38);
 }
 
-[data-theme="dark"] input::placeholder,
+[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"])::placeholder,
 [data-theme="dark"] textarea::placeholder {
   color: #94a3b8;
   opacity: 1;

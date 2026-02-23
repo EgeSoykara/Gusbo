@@ -28,6 +28,7 @@ urlpatterns = [
     path('taleplerim/iptalleri-sil/', views.delete_all_cancelled_requests, name='delete_all_cancelled_requests'),
     path('usta/talepler/', views.provider_requests, name='provider_requests'),
     path('api/provider/panel-snapshot/', views.provider_panel_snapshot, name='provider_panel_snapshot'),
+    path('api/customer/requests-snapshot/', views.customer_requests_snapshot, name='customer_requests_snapshot'),
     path('usta/randevu/<int:appointment_id>/kabul/', views.provider_confirm_appointment, name='provider_confirm_appointment'),
     path('usta/randevu/<int:appointment_id>/tamamla/', views.provider_complete_appointment, name='provider_complete_appointment'),
     path('usta/randevu/<int:appointment_id>/reddet/', views.provider_reject_appointment, name='provider_reject_appointment'),

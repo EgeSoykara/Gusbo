@@ -1,4 +1,5 @@
 import json
+import hashlib
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from math import asin, cos, radians, sin, sqrt
@@ -168,6 +169,47 @@ def build_unread_message_map(service_request_ids, viewer_role):
         .annotate(total=Count("id"))
     )
     return {row["service_request_id"]: row["total"] for row in unread_rows}
+
+
+def build_customer_requests_signature(user):
+    request_rows = list(
+        user.service_requests.values_list("id", "status", "matched_provider_id").order_by("id")
+    )
+    request_ids = [row[0] for row in request_rows]
+    if not request_ids:
+        return "empty"
+
+    offer_rows = list(
+        ProviderOffer.objects.filter(service_request_id__in=request_ids)
+        .values_list("service_request_id", "provider_id", "status", "responded_at", "quote_amount")
+        .order_by("service_request_id", "provider_id")
+    )
+    appointment_rows = list(
+        ServiceAppointment.objects.filter(service_request_id__in=request_ids)
+        .values_list("service_request_id", "status", "scheduled_for", "updated_at")
+        .order_by("service_request_id")
+    )
+    rating_rows = list(
+        ProviderRating.objects.filter(service_request_id__in=request_ids)
+        .values_list("service_request_id", "score", "updated_at")
+        .order_by("service_request_id")
+    )
+    unread_rows = list(
+        ServiceMessage.objects.filter(service_request_id__in=request_ids, read_at__isnull=True)
+        .exclude(sender_role="customer")
+        .values("service_request_id")
+        .annotate(total=Count("id"))
+        .order_by("service_request_id")
+    )
+    payload = {
+        "requests": request_rows,
+        "offers": offer_rows,
+        "appointments": appointment_rows,
+        "ratings": rating_rows,
+        "unread": unread_rows,
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+    return hashlib.sha1(encoded).hexdigest()
 
 
 def purge_request_messages(service_request_id):
@@ -720,8 +762,19 @@ def my_requests(request):
         {
             "requests": requests,
             "cancelled_count": cancelled_count,
+            "customer_requests_signature": build_customer_requests_signature(request.user),
         },
     )
+
+
+@login_required
+@never_cache
+def customer_requests_snapshot(request):
+    if get_provider_for_user(request.user):
+        return JsonResponse({"detail": "forbidden"}, status=403)
+    response = JsonResponse({"signature": build_customer_requests_signature(request.user)})
+    response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
 
 
 @login_required

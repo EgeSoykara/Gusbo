@@ -241,5 +241,42 @@
     {% endif %}
   </div>
 </section>
+<div
+  id="customer-live-sync"
+  data-snapshot-url="{% url 'customer_requests_snapshot' %}"
+  data-signature="{{ customer_requests_signature }}"
+></div>
+<script>
+  (function () {
+    const syncRoot = document.getElementById("customer-live-sync");
+    if (!syncRoot) return;
+    const snapshotUrl = syncRoot.dataset.snapshotUrl;
+    if (!snapshotUrl) return;
+
+    let baselineSignature = syncRoot.dataset.signature || "";
+
+    async function pollCustomerRequests() {
+      if (document.hidden) return;
+      try {
+        const response = await fetch(snapshotUrl, {
+          method: "GET",
+          credentials: "same-origin",
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const payload = await response.json();
+        const nextSignature = payload.signature || "";
+        if (nextSignature && nextSignature !== baselineSignature) {
+          window.location.reload();
+        }
+      } catch (error) {
+        void error;
+      }
+    }
+
+    window.setInterval(pollCustomerRequests, 8000);
+  })();
+</script>
 {% endblock %}
 

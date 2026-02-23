@@ -238,10 +238,11 @@ class ProviderProfileForm(forms.ModelForm):
         }
         help_texts = {
             "phone": PHONE_HELP_TEXT,
+            "service_types": "Birden fazla hizmeti tek tıkla seçebilirsiniz.",
         }
         widgets = {
             "phone": forms.TextInput(attrs=phone_widget_attrs()),
-            "service_types": forms.SelectMultiple(attrs={"size": 8}),
+            "service_types": forms.CheckboxSelectMultiple(attrs={"class": "service-types-checklist"}),
             "description": forms.Textarea(attrs={"rows": 3, "placeholder": "Profil açıklaması"}),
         }
 
