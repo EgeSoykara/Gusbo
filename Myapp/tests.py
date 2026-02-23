@@ -66,7 +66,26 @@ class MarketplaceTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Mahallendeki En İyi Ustaları")
 
+    def test_anonymous_user_cannot_create_request(self):
+        response = self.client.post(
+            reverse("create_request"),
+            data={
+                "customer_name": "Ayse Yilmaz",
+                "customer_phone": "05000000000",
+                "service_type": self.service.id,
+                "city": "Lefkosa",
+                "district": "Ortakoy",
+                "details": "Mutfakta su kacagi var.",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Talep oluşturmak için giriş yapmalısınız.")
+        self.assertFalse(ServiceRequest.objects.exists())
+
     def test_service_request_creates_record(self):
+        customer = User.objects.create_user(username="talepmusteri", password="GucluSifre123!")
+        self.client.login(username="talepmusteri", password="GucluSifre123!")
         response = self.client.post(
             reverse("create_request"),
             data={
@@ -82,10 +101,13 @@ class MarketplaceTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "ustaya teklif vermesi için iletildi")
         latest = ServiceRequest.objects.latest("created_at")
+        self.assertEqual(latest.customer, customer)
         self.assertEqual(latest.status, "pending_provider")
         self.assertEqual(ProviderOffer.objects.filter(service_request=latest, status="pending").count(), 2)
 
     def test_service_request_normalizes_phone_input(self):
+        User.objects.create_user(username="formatmusteri", password="GucluSifre123!")
+        self.client.login(username="formatmusteri", password="GucluSifre123!")
         response = self.client.post(
             reverse("create_request"),
             data={
@@ -320,7 +342,7 @@ class MarketplaceTests(TestCase):
         self.provider_ali.refresh_from_db()
         self.assertEqual(float(self.provider_ali.rating), 5.0)
 
-    def test_customer_cannot_update_existing_rating(self):
+    def test_customer_can_update_existing_rating(self):
         user = User.objects.create_user(username="degistiremez", password="GucluSifre123!")
         self.client.login(username="degistiremez", password="GucluSifre123!")
         service_request = ServiceRequest.objects.create(
@@ -340,15 +362,16 @@ class MarketplaceTests(TestCase):
             data={"score": 5, "comment": "Ilk oy"},
             follow=True,
         )
-        self.client.post(
+        response = self.client.post(
             reverse("rate_request", args=[service_request.id]),
             data={"score": 1, "comment": "Ikinci oy denemesi"},
             follow=True,
         )
 
+        self.assertContains(response, "yorumunuz güncellendi")
         rating = ProviderRating.objects.get(service_request=service_request)
-        self.assertEqual(rating.score, 5)
-        self.assertEqual(rating.comment, "Ilk oy")
+        self.assertEqual(rating.score, 1)
+        self.assertEqual(rating.comment, "Ikinci oy denemesi")
 
     def test_customer_cannot_rate_without_match(self):
         user = User.objects.create_user(username="eslesmesiz", password="GucluSifre123!")
@@ -726,6 +749,8 @@ class MarketplaceTests(TestCase):
         )
 
     def test_provider_can_accept_offer_from_panel(self):
+        User.objects.create_user(username="panelmusteri", password="GucluSifre123!")
+        self.client.login(username="panelmusteri", password="GucluSifre123!")
         self.client.post(
             reverse("create_request"),
             data={
@@ -741,6 +766,7 @@ class MarketplaceTests(TestCase):
 
         service_request = ServiceRequest.objects.latest("created_at")
         offer = ProviderOffer.objects.get(service_request=service_request, provider=self.provider_ali)
+        self.client.logout()
         self.client.login(username="aliusta", password="GucluSifre123!")
         self.client.post(
             reverse("provider_accept_offer", args=[offer.id]),
@@ -813,6 +839,37 @@ class MarketplaceTests(TestCase):
                 sender_role="customer",
             ).exists()
         )
+
+    def test_completed_request_messages_page_is_closed(self):
+        customer = User.objects.create_user(username="chatclosed", password="GucluSifre123!")
+        completed_request = ServiceRequest.objects.create(
+            customer_name="Kapali Mesaj Musteri",
+            customer_phone="05006660001",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Tamamlanmis is",
+            matched_provider=self.provider_ali,
+            customer=customer,
+            status="completed",
+        )
+
+        self.client.login(username="chatclosed", password="GucluSifre123!")
+        get_response = self.client.get(
+            reverse("request_messages", args=[completed_request.id]),
+            follow=True,
+        )
+        self.assertEqual(get_response.status_code, 200)
+        self.assertContains(get_response, "Tamamlanan veya kapalı taleplerde mesajlaşma açık değildir.")
+
+        post_response = self.client.post(
+            reverse("request_messages", args=[completed_request.id]),
+            data={"body": "Yeni mesaj denemesi"},
+            follow=True,
+        )
+        self.assertEqual(post_response.status_code, 200)
+        self.assertContains(post_response, "Tamamlanan veya kapalı taleplerde mesajlaşma açık değildir.")
+        self.assertEqual(ServiceMessage.objects.filter(service_request=completed_request).count(), 0)
 
     def test_customer_can_select_provider_after_offers(self):
         customer = User.objects.create_user(username="teklifsecen", password="GucluSifre123!")
@@ -891,6 +948,8 @@ class MarketplaceTests(TestCase):
         self.assertGreaterEqual(target.accepted_offers[0].comparison_score, target.accepted_offers[1].comparison_score)
 
     def test_provider_reject_keeps_request_if_other_pending_offers_exist(self):
+        User.objects.create_user(username="panelredmusteri", password="GucluSifre123!")
+        self.client.login(username="panelredmusteri", password="GucluSifre123!")
         self.client.post(
             reverse("create_request"),
             data={
@@ -905,6 +964,7 @@ class MarketplaceTests(TestCase):
         )
         service_request = ServiceRequest.objects.latest("created_at")
         first_offer = ProviderOffer.objects.get(service_request=service_request, provider=self.provider_ali)
+        self.client.logout()
         self.client.login(username="aliusta", password="GucluSifre123!")
         self.client.post(reverse("provider_reject_offer", args=[first_offer.id]), follow=True)
 
@@ -916,6 +976,8 @@ class MarketplaceTests(TestCase):
         self.assertEqual(service_request.status, "pending_provider")
 
     def test_provider_reject_deletes_request_when_no_provider_left(self):
+        User.objects.create_user(username="tekredmusteri", password="GucluSifre123!")
+        self.client.login(username="tekredmusteri", password="GucluSifre123!")
         self.client.post(
             reverse("create_request"),
             data={
@@ -930,6 +992,7 @@ class MarketplaceTests(TestCase):
         )
         service_request = ServiceRequest.objects.latest("created_at")
         only_offer = ProviderOffer.objects.get(service_request=service_request, provider=self.provider_mehmet)
+        self.client.logout()
         self.client.login(username="mehmetusta", password="GucluSifre123!")
         self.client.post(reverse("provider_reject_offer", args=[only_offer.id]), follow=True)
 
@@ -951,3 +1014,34 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
         self.assertContains(response, "Bu hesap usta olarak tanımlı değil")
+
+    def test_provider_panel_snapshot_returns_pending_state(self):
+        service_request = ServiceRequest.objects.create(
+            customer_name="Canli Takip",
+            customer_phone="05009990000",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Panel snapshot testi",
+            status="pending_provider",
+        )
+        pending_offer = ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider_ali,
+            token="SNAPSHOT1",
+            sequence=1,
+            status="pending",
+        )
+
+        self.client.login(username="aliusta", password="GucluSifre123!")
+        response = self.client.get(reverse("provider_panel_snapshot"))
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["pending_offers_count"], 1)
+        self.assertEqual(payload["latest_pending_offer_id"], pending_offer.id)
+
+    def test_provider_panel_snapshot_forbidden_for_non_provider(self):
+        User.objects.create_user(username="normaluser", password="GucluSifre123!")
+        self.client.login(username="normaluser", password="GucluSifre123!")
+        response = self.client.get(reverse("provider_panel_snapshot"))
+        self.assertEqual(response.status_code, 403)

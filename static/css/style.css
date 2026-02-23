@@ -730,8 +730,14 @@ h3,
 .btn-main-dark {
   border: none;
   background: linear-gradient(140deg, #0f172a, #1e3a8a);
+  color: #ffffff;
   font-weight: 700;
   padding: 12px;
+}
+
+.btn-main-dark:hover,
+.btn-main-dark:focus {
+  color: #ffffff;
 }
 
 [data-theme="dark"] .btn-main-dark {
@@ -1296,6 +1302,15 @@ textarea:focus {
   display: inline-flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.provider-detail-actions .btn-main-dark {
+  color: #ffffff;
+}
+
+.provider-detail-actions .btn-main-dark:hover,
+.provider-detail-actions .btn-main-dark:focus {
+  color: #ffffff;
 }
 
 .provider-services-list {
@@ -1911,6 +1926,69 @@ body {
 
 .panel-card .card-body {
   padding: 1.05rem 1rem;
+}
+
+.auth-gate-card {
+  border-style: solid;
+}
+
+.auth-gate-note {
+  color: #475569;
+}
+
+.auth-gate-login-btn {
+  background: #0f172a;
+  color: #ffffff;
+}
+
+.auth-gate-login-btn:hover {
+  background: #111827;
+  color: #ffffff;
+}
+
+.auth-gate-signup-btn {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  font-weight: 600;
+  border-radius: 10px;
+}
+
+.auth-gate-signup-btn:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+  color: #1f2937;
+}
+
+[data-theme="dark"] .auth-gate-card {
+  background: #0b1528;
+  border-color: rgba(148, 163, 184, 0.4);
+}
+
+[data-theme="dark"] .auth-gate-note {
+  color: #cbd5e1;
+}
+
+[data-theme="dark"] .auth-gate-login-btn {
+  background: #1d4ed8;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .auth-gate-login-btn:hover {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .auth-gate-signup-btn {
+  border-color: rgba(148, 163, 184, 0.45);
+  background: rgba(15, 23, 42, 0.72);
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .auth-gate-signup-btn:hover {
+  border-color: rgba(148, 163, 184, 0.62);
+  background: rgba(30, 41, 59, 0.9);
+  color: #f8fafc;
 }
 
 @media (max-width: 768px) {

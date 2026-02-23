@@ -8,7 +8,11 @@
       <p>Kuzey Kıbrıs genelinde hizmet türüne göre filtreleyin, ustaları karşılaştırın ve dakikalar içinde talep açın.</p>
       <div class="hero-actions">
         <a class="btn hero-btn hero-btn-solid" href="#search-panel"><i class="bi bi-search me-1"></i>Usta Ara</a>
-        <a class="btn hero-btn hero-btn-outline" href="#talep-form"><i class="bi bi-send-check me-1"></i>Talep Aç</a>
+        {% if request.user.is_authenticated and not is_provider_user %}
+          <a class="btn hero-btn hero-btn-outline" href="#talep-form"><i class="bi bi-send-check me-1"></i>Talep Aç</a>
+        {% else %}
+          <a class="btn hero-btn hero-btn-outline" href="{% url 'customer_login' %}"><i class="bi bi-box-arrow-in-right me-1"></i>Giriş Yap</a>
+        {% endif %}
       </div>
       <div class="trust-ribbon">
         <span><i class="bi bi-shield-check"></i>Doğrulanmış Profiller</span>
@@ -147,7 +151,22 @@
   </div>
 
   <div class="col-xl-5">
-    {% if is_provider_user %}
+    {% if not request.user.is_authenticated %}
+      <div class="card panel-card shadow-sm sticky-form reveal-up delay-3 auth-gate-card" id="talep-form">
+        <div class="card-body">
+          <h2 class="h5 mb-3 section-title"><i class="bi bi-shield-lock-fill me-2"></i>Talep Açmak İçin Giriş Gerekli</h2>
+          <p class="mb-3 auth-gate-note">Talep oluşturma sadece giriş yapan müşteriler için açıktır.</p>
+          <div class="d-grid gap-2">
+            <a href="{% url 'customer_login' %}" class="btn btn-main-dark w-100 auth-gate-login-btn">
+              <i class="bi bi-box-arrow-in-right me-2"></i>Müşteri Girişi
+            </a>
+            <a href="{% url 'customer_signup' %}" class="btn w-100 auth-gate-signup-btn">
+              <i class="bi bi-person-plus-fill me-2"></i>Hemen Kayıt Ol
+            </a>
+          </div>
+        </div>
+      </div>
+    {% elif is_provider_user %}
       <div class="card panel-card shadow-sm sticky-form reveal-up delay-3">
         <div class="card-body">
           <h2 class="h5 mb-3 section-title"><i class="bi bi-tools me-2"></i>Usta Modu</h2>

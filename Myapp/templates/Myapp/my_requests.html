@@ -135,36 +135,30 @@
                   {% elif item.status == "completed" %}
                     {% if item.matched_provider %}
                       <div class="request-actions-stack">
-                        <a href="{% url 'request_messages' item.id %}" class="btn btn-sm nav-ghost-btn">
-                          <i class="bi bi-chat-dots me-1"></i>Mesajlar
-                          {% if item.unread_messages %}
-                            <span class="chat-unread-badge">{{ item.unread_messages }}</span>
-                          {% endif %}
-                        </a>
-                        {% if item.rating_entry %}
-                          <div class="small">
-                            <strong>Oy verildi:</strong> {{ item.rating_entry.score }}/5
-                            {% if item.rating_entry.comment %}
-                              <br><span class="text-muted">{{ item.rating_entry.comment }}</span>
-                            {% endif %}
+                        <span class="small text-muted"><i class="bi bi-lock-fill me-1"></i>Mesajlaşma tamamlanan işte kapalı.</span>
+                        <form method="post" action="{% url 'rate_request' item.id %}" class="request-rate-form">
+                          {% csrf_token %}
+                          <div class="request-rate-row">
+                            <select name="score" required>
+                              <option value="">Puan</option>
+                              <option value="5" {% if item.rating_entry and item.rating_entry.score == 5 %}selected{% endif %}>5</option>
+                              <option value="4" {% if item.rating_entry and item.rating_entry.score == 4 %}selected{% endif %}>4</option>
+                              <option value="3" {% if item.rating_entry and item.rating_entry.score == 3 %}selected{% endif %}>3</option>
+                              <option value="2" {% if item.rating_entry and item.rating_entry.score == 2 %}selected{% endif %}>2</option>
+                              <option value="1" {% if item.rating_entry and item.rating_entry.score == 1 %}selected{% endif %}>1</option>
+                            </select>
+                            <button type="submit" class="btn btn-sm request-rate-btn">
+                              {% if item.rating_entry %}Yorumu Güncelle{% else %}Puanla{% endif %}
+                            </button>
                           </div>
-                        {% else %}
-                          <form method="post" action="{% url 'rate_request' item.id %}" class="request-rate-form">
-                            {% csrf_token %}
-                            <div class="request-rate-row">
-                              <select name="score" required>
-                                <option value="">Puan</option>
-                                <option value="5">5</option>
-                                <option value="4">4</option>
-                                <option value="3">3</option>
-                                <option value="2">2</option>
-                                <option value="1">1</option>
-                              </select>
-                              <button type="submit" class="btn btn-sm request-rate-btn">Puanla</button>
+                          <textarea name="comment" rows="2" placeholder="Yorum (isteğe bağlı)">{% if item.rating_entry %}{{ item.rating_entry.comment }}{% endif %}</textarea>
+                          {% if item.rating_entry %}
+                            <div class="small text-muted">
+                              Mevcut puanın: {{ item.rating_entry.score }}/5
+                              {% if item.rating_entry.updated_at %} - Son güncelleme: {{ item.rating_entry.updated_at|date:"d.m.Y H:i" }}{% endif %}
                             </div>
-                            <textarea name="comment" rows="2" placeholder="Yorum (isteğe bağlı)"></textarea>
-                          </form>
-                        {% endif %}
+                          {% endif %}
+                        </form>
                       </div>
                     {% else %}
                       <span class="small text-muted">Usta yok</span>

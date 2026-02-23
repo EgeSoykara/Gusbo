@@ -1,4 +1,4 @@
-const CACHE_NAME = "ustabul-pwa-v3";
+const CACHE_NAME = "ustabul-pwa-v4";
 const PRECACHE_URLS = [
   "/",
   "/offline/",
@@ -44,6 +44,12 @@ self.addEventListener("fetch", (event) => {
         })
         .catch(() => caches.match(request).then((cached) => cached || caches.match("/offline/")))
     );
+    return;
+  }
+
+  // Never cache API responses; they must stay live for panel polling.
+  if (url.origin === self.location.origin && url.pathname.startsWith("/api/")) {
+    event.respondWith(fetch(request));
     return;
   }
 

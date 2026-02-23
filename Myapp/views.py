@@ -10,7 +10,7 @@ from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Avg, Count, Q
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
@@ -381,7 +381,11 @@ def create_request(request):
     if request.method != "POST":
         return redirect("index")
 
-    provider_user = get_provider_for_user(request.user) if request.user.is_authenticated else None
+    if not request.user.is_authenticated:
+        messages.error(request, "Talep oluşturmak için giriş yapmalısınız.")
+        return redirect("customer_login")
+
+    provider_user = get_provider_for_user(request.user)
     if provider_user:
         messages.error(request, "Usta hesabı ile talep oluşturamazsınız.")
         return redirect("provider_requests")
@@ -477,18 +481,17 @@ def rate_request(request, request_id):
         return redirect("my_requests")
 
     current_rating = getattr(service_request, "provider_rating", None)
-    if current_rating is not None:
-        messages.warning(request, "Bu talep için puan zaten verildi. Güncelleme yapılamaz.")
-        return redirect("my_requests")
-
-    form = ProviderRatingForm(request.POST)
+    form = ProviderRatingForm(request.POST, instance=current_rating)
     if form.is_valid():
         rating = form.save(commit=False)
         rating.service_request = service_request
         rating.provider = service_request.matched_provider
         rating.customer = request.user
         rating.save()
-        messages.success(request, f"{service_request.matched_provider.full_name} için puanınız kaydedildi.")
+        if current_rating is None:
+            messages.success(request, f"{service_request.matched_provider.full_name} için puanınız kaydedildi.")
+        else:
+            messages.success(request, f"{service_request.matched_provider.full_name} için yorumunuz güncellendi.")
     else:
         messages.error(request, "Puan kaydedilemedi. Lütfen geçerli bir puan seçin.")
 
@@ -646,8 +649,8 @@ def request_messages(request, request_id):
         viewer_role = "customer"
         back_url = "my_requests"
 
-    if service_request.status not in {"matched", "completed"}:
-        messages.warning(request, "Mesajlaşma sadece eşleşen talepler için açıktır.")
+    if service_request.status != "matched":
+        messages.warning(request, "Tamamlanan veya kapalı taleplerde mesajlaşma açık değildir.")
         return redirect(back_url)
 
     if request.method == "POST":
@@ -1001,7 +1004,7 @@ def provider_requests(request):
         .order_by("-updated_at")[:20]
     )
     active_threads = list(
-        provider.service_requests.filter(status__in=["matched", "completed"])
+        provider.service_requests.filter(status="matched")
         .select_related("service_type", "customer")
         .order_by("-created_at")[:30]
     )
@@ -1023,6 +1026,28 @@ def provider_requests(request):
             "active_threads": active_threads,
         },
     )
+
+
+@login_required
+@never_cache
+def provider_panel_snapshot(request):
+    provider = get_provider_for_user(request.user)
+    if not provider:
+        return JsonResponse({"detail": "forbidden"}, status=403)
+
+    refresh_offer_lifecycle()
+    pending_offers_qs = provider.offers.filter(status="pending").order_by("-sent_at")
+    latest_pending_offer = pending_offers_qs.values("id").first()
+
+    payload = {
+        "pending_offers_count": pending_offers_qs.count(),
+        "latest_pending_offer_id": latest_pending_offer["id"] if latest_pending_offer else 0,
+        "pending_appointments_count": provider.appointments.filter(status="pending").count(),
+        "waiting_customer_appointments_count": provider.appointments.filter(status="pending_customer").count(),
+    }
+    response = JsonResponse(payload)
+    response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
 
 
 def provider_detail(request, provider_id):
