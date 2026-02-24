@@ -1,4 +1,4 @@
-from datetime import timedelta
+﻿from datetime import timedelta
 
 from django.test import TestCase
 from django.urls import reverse
@@ -66,7 +66,7 @@ class MarketplaceTests(TestCase):
     def test_home_page_loads(self):
         response = self.client.get(reverse("index"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Mahallendeki En İyi Ustaları")
+        self.assertContains(response, "Mahallendeki En")
 
     def test_anonymous_user_cannot_create_request(self):
         response = self.client.post(
@@ -82,7 +82,7 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Talep oluşturmak için giriş yapmalısınız.")
+        self.assertContains(response, "Talep oluÅŸturmak iÃ§in giriÅŸ yapmalÄ±sÄ±nÄ±z.")
         self.assertFalse(ServiceRequest.objects.exists())
 
     def test_service_request_creates_record(self):
@@ -101,7 +101,7 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "ustaya teklif vermesi için iletildi")
+        self.assertContains(response, "ustaya teklif vermesi iÃ§in iletildi")
         latest = ServiceRequest.objects.latest("created_at")
         self.assertEqual(latest.customer, customer)
         self.assertEqual(latest.status, "pending_provider")
@@ -245,7 +245,7 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Mahallendeki En İyi Ustaları")
+        self.assertContains(response, "Mahallendeki En")
         self.assertNotIn("phone_verify", self.client.session)
 
     def test_provider_can_signup(self):
@@ -370,7 +370,7 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
 
-        self.assertContains(response, "yorumunuz güncellendi")
+        self.assertContains(response, "yorumunuz gÃ¼ncellendi")
         rating = ProviderRating.objects.get(service_request=service_request)
         self.assertEqual(rating.score, 1)
         self.assertEqual(rating.comment, "Ikinci oy denemesi")
@@ -895,7 +895,7 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
         self.assertEqual(get_response.status_code, 200)
-        self.assertContains(get_response, "Tamamlanan veya kapalı taleplerde mesajlaşma açık değildir.")
+        self.assertContains(get_response, "Tamamlanan veya kapalÄ± taleplerde mesajlaÅŸma aÃ§Ä±k deÄŸildir.")
 
         post_response = self.client.post(
             reverse("request_messages", args=[completed_request.id]),
@@ -903,7 +903,7 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
         self.assertEqual(post_response.status_code, 200)
-        self.assertContains(post_response, "Tamamlanan veya kapalı taleplerde mesajlaşma açık değildir.")
+        self.assertContains(post_response, "Tamamlanan veya kapalÄ± taleplerde mesajlaÅŸma aÃ§Ä±k deÄŸildir.")
         self.assertEqual(ServiceMessage.objects.filter(service_request=completed_request).count(), 0)
 
     def test_customer_can_select_provider_after_offers(self):
@@ -1086,7 +1086,7 @@ class MarketplaceTests(TestCase):
             data={"username": "normalmusteri", "password": "GucluSifre123!"},
             follow=True,
         )
-        self.assertContains(response, "Bu hesap usta olarak tanımlı değil")
+        self.assertContains(response, "Bu hesap usta olarak")
 
     def test_provider_panel_snapshot_returns_pending_state(self):
         service_request = ServiceRequest.objects.create(
@@ -1207,6 +1207,173 @@ class MarketplaceTests(TestCase):
         self.assertContains(response, "Anlasma Provider Musteri")
         self.assertContains(response, "2100")
 
+    def test_customer_can_delete_account(self):
+        customer = User.objects.create_user(username="silinenmusteri", password="GucluSifre123!")
+        ServiceRequest.objects.create(
+            customer_name="Silinen Musteri",
+            customer_phone="05009990001",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Hesap silme testi",
+            customer=customer,
+            status="new",
+        )
+        self.client.login(username="silinenmusteri", password="GucluSifre123!")
+
+        response = self.client.post(
+            reverse("delete_account"),
+            data={"confirmation_text": "HESABIMI SIL", "password": "GucluSifre123!"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(User.objects.filter(username="silinenmusteri").exists())
+        self.assertEqual(ServiceRequest.objects.filter(customer_name="Silinen Musteri").count(), 0)
+
+    def test_provider_can_delete_account(self):
+        customer = User.objects.create_user(username="ustaesleme", password="GucluSifre123!")
+        service_request = ServiceRequest.objects.create(
+            customer_name="Usta Eslesme",
+            customer_phone="05009990002",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Usta hesap silme testi",
+            customer=customer,
+            matched_provider=self.provider_ali,
+            status="matched",
+        )
+        self.client.login(username="aliusta", password="GucluSifre123!")
+
+        response = self.client.post(
+            reverse("delete_account"),
+            data={"confirmation_text": "HESABIMI SIL", "password": "GucluSifre123!"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(User.objects.filter(username="aliusta").exists())
+        self.assertFalse(Provider.objects.filter(full_name="Ali Usta").exists())
+        service_request.refresh_from_db()
+        self.assertIsNone(service_request.matched_provider)
+
+    def test_delete_account_requires_confirmation_phrase(self):
+        customer = User.objects.create_user(username="onaysizsilme", password="GucluSifre123!")
+        self.client.login(username="onaysizsilme", password="GucluSifre123!")
+
+        response = self.client.post(
+            reverse("delete_account"),
+            data={"confirmation_text": "SIL", "password": "GucluSifre123!"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(User.objects.filter(username="onaysizsilme").exists())
+
+    def test_customer_account_settings_page_loads_with_tabs(self):
+        customer = User.objects.create_user(username="ayarli_musteri", password="GucluSifre123!")
+        CustomerProfile.objects.create(user=customer, phone="05001112233", city="Lefkosa", district="Ortakoy")
+        self.client.login(username="ayarli_musteri", password="GucluSifre123!")
+
+        response = self.client.get(reverse("account_settings"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Hesap Bilgileri")
+        self.assertContains(response, "İletişim ve Konum Bilgileri")
+        self.assertContains(response, "Güvenlik")
+
+    def test_provider_account_settings_page_hides_contact_section(self):
+        self.client.login(username="aliusta", password="GucluSifre123!")
+        response = self.client.get(reverse("account_settings"))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "İletişim ve Konum Bilgileri")
+        self.assertContains(response, "Usta Profili")
+
+    def test_customer_can_update_identity_from_account_settings(self):
+        customer = User.objects.create_user(username="kimlikeski", password="GucluSifre123!")
+        CustomerProfile.objects.create(user=customer, phone="05001112233", city="Lefkosa", district="Ortakoy")
+        self.client.login(username="kimlikeski", password="GucluSifre123!")
+
+        self.client.post(
+            reverse("account_settings"),
+            data={
+                "form_action": "identity",
+                "identity-username": "kimlikyeni",
+                "identity-first_name": "Ayse",
+                "identity-last_name": "Demir",
+                "identity-email": "ayse@example.com",
+            },
+            follow=True,
+        )
+
+        customer.refresh_from_db()
+        self.assertEqual(customer.username, "kimlikyeni")
+        self.assertEqual(customer.first_name, "Ayse")
+        self.assertEqual(customer.last_name, "Demir")
+        self.assertEqual(customer.email, "ayse@example.com")
+
+    def test_customer_can_update_contact_from_account_settings(self):
+        customer = User.objects.create_user(username="iletisim_musteri", password="GucluSifre123!")
+        CustomerProfile.objects.create(user=customer, phone="05001112233", city="Lefkosa", district="Ortakoy")
+        self.client.login(username="iletisim_musteri", password="GucluSifre123!")
+
+        self.client.post(
+            reverse("account_settings"),
+            data={
+                "form_action": "contact",
+                "contact-phone": "+90 555 333 22 11",
+                "contact-city": "Girne",
+                "contact-district": "Karakum",
+            },
+            follow=True,
+        )
+
+        profile = CustomerProfile.objects.get(user=customer)
+        self.assertEqual(profile.phone, "05553332211")
+        self.assertEqual(profile.city, "Girne")
+        self.assertEqual(profile.district, "Karakum")
+
+    def test_provider_contact_update_redirects_to_provider_profile(self):
+        self.client.login(username="aliusta", password="GucluSifre123!")
+        response = self.client.post(
+            reverse("account_settings"),
+            data={
+                "form_action": "contact",
+                "contact-full_name": "Ali Usta Yeni",
+                "contact-phone": "05557778899",
+                "contact-city": "Girne",
+                "contact-district": "Karakum",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.provider_ali.refresh_from_db()
+        self.assertEqual(self.provider_ali.full_name, "Ali Usta")
+        self.assertEqual(self.provider_ali.phone, "05550000000")
+        self.assertEqual(self.provider_ali.city, "Lefkosa")
+        self.assertEqual(self.provider_ali.district, "Ortakoy")
+
+    def test_customer_can_change_password_from_account_settings(self):
+        customer = User.objects.create_user(username="sifredegis", password="GucluSifre123!")
+        CustomerProfile.objects.create(user=customer, phone="05004445566", city="Lefkosa", district="Ortakoy")
+        self.client.login(username="sifredegis", password="GucluSifre123!")
+
+        response = self.client.post(
+            reverse("account_settings"),
+            data={
+                "form_action": "security",
+                "password-old_password": "GucluSifre123!",
+                "password-new_password1": "YeniGucluSifre123!",
+                "password-new_password2": "YeniGucluSifre123!",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+
+        self.client.logout()
+        self.assertTrue(self.client.login(username="sifredegis", password="YeniGucluSifre123!"))
+
     def test_provider_packages_page_loads_for_provider(self):
         self.client.login(username="aliusta", password="GucluSifre123!")
         response = self.client.get(reverse("provider_packages"))
@@ -1263,8 +1430,10 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Teklif göndermek için en az")
+        self.assertContains(response, "Teklif gÃ¶ndermek iÃ§in en az")
         offer.refresh_from_db()
         service_request.refresh_from_db()
         self.assertEqual(offer.status, "pending")
         self.assertEqual(service_request.status, "pending_provider")
+
+

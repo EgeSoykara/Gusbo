@@ -1,0 +1,257 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<section class="card panel-card shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <h1 class="h4 mb-2"><i class="bi bi-gear-wide-connected me-2"></i>Hesap Ayarları</h1>
+    <p class="text-muted mb-0">
+      Hesap bilgilerinizi ve güvenlik ayarlarınızı buradan yönetebilirsiniz.
+    </p>
+  </div>
+</section>
+
+<section class="card panel-card shadow-sm reveal-up">
+  <div class="card-body p-4">
+    <ul class="nav nav-pills mb-4 gap-2" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="btn btn-outline-secondary {% if active_tab == 'identity' %}active{% endif %}" id="tab-identity-btn" data-bs-toggle="pill" data-bs-target="#tab-identity" type="button" role="tab" aria-controls="tab-identity" aria-selected="{% if active_tab == 'identity' %}true{% else %}false{% endif %}">
+          <i class="bi bi-person-vcard me-1"></i>Hesap Bilgileri
+        </button>
+      </li>
+      {% if allow_contact_tab %}
+        <li class="nav-item" role="presentation">
+          <button class="btn btn-outline-secondary {% if active_tab == 'contact' %}active{% endif %}" id="tab-contact-btn" data-bs-toggle="pill" data-bs-target="#tab-contact" type="button" role="tab" aria-controls="tab-contact" aria-selected="{% if active_tab == 'contact' %}true{% else %}false{% endif %}">
+            <i class="bi bi-telephone me-1"></i>İletişim
+          </button>
+        </li>
+      {% endif %}
+      <li class="nav-item" role="presentation">
+        <button class="btn btn-outline-secondary {% if active_tab == 'security' %}active{% endif %}" id="tab-security-btn" data-bs-toggle="pill" data-bs-target="#tab-security" type="button" role="tab" aria-controls="tab-security" aria-selected="{% if active_tab == 'security' %}true{% else %}false{% endif %}">
+          <i class="bi bi-shield-lock me-1"></i>Güvenlik
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="btn btn-outline-danger {% if active_tab == 'danger' %}active{% endif %}" id="tab-danger-btn" data-bs-toggle="pill" data-bs-target="#tab-danger" type="button" role="tab" aria-controls="tab-danger" aria-selected="{% if active_tab == 'danger' %}true{% else %}false{% endif %}">
+          <i class="bi bi-exclamation-triangle me-1"></i>Tehlikeli İşlemler
+        </button>
+      </li>
+    </ul>
+
+    <div class="tab-content">
+      <div class="tab-pane fade {% if active_tab == 'identity' %}show active{% endif %}" id="tab-identity" role="tabpanel" aria-labelledby="tab-identity-btn">
+        <h2 class="h5 mb-3">Temel Hesap Bilgileri</h2>
+        <form method="post" class="row g-3">
+          {% csrf_token %}
+          <input type="hidden" name="form_action" value="identity">
+          <div class="col-md-6">
+            <label class="form-label">{{ identity_form.username.label }}</label>
+            {{ identity_form.username }}
+            {% for error in identity_form.username.errors %}
+              <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">{{ identity_form.email.label }}</label>
+            {{ identity_form.email }}
+            {% for error in identity_form.email.errors %}
+              <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">{{ identity_form.first_name.label }}</label>
+            {{ identity_form.first_name }}
+            {% for error in identity_form.first_name.errors %}
+              <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">{{ identity_form.last_name.label }}</label>
+            {{ identity_form.last_name }}
+            {% for error in identity_form.last_name.errors %}
+              <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+          </div>
+          {% if identity_form.non_field_errors %}
+            <div class="col-12">
+              {% for error in identity_form.non_field_errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+          <div class="col-12">
+            <button type="submit" class="btn btn-main">
+              <i class="bi bi-save2 me-1"></i>Hesap Bilgilerini Kaydet
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {% if allow_contact_tab %}
+        <div class="tab-pane fade {% if active_tab == 'contact' %}show active{% endif %}" id="tab-contact" role="tabpanel" aria-labelledby="tab-contact-btn">
+          <h2 class="h5 mb-3">İletişim ve Konum Bilgileri</h2>
+          <form method="post" class="row g-3" id="account-contact-form">
+            {% csrf_token %}
+            <input type="hidden" name="form_action" value="contact">
+            <div class="col-md-6">
+              <label class="form-label">{{ contact_form.phone.label }}</label>
+              {{ contact_form.phone }}
+              {% if contact_form.phone.help_text %}
+                <div class="small text-muted mt-1">{{ contact_form.phone.help_text }}</div>
+              {% endif %}
+              {% for error in contact_form.phone.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">{{ contact_form.city.label }}</label>
+              {{ contact_form.city }}
+              {% for error in contact_form.city.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">{{ contact_form.district.label }}</label>
+              {{ contact_form.district }}
+              {% for error in contact_form.district.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+            {% if contact_form.non_field_errors %}
+              <div class="col-12">
+                {% for error in contact_form.non_field_errors %}
+                  <div class="text-danger small">{{ error }}</div>
+                {% endfor %}
+              </div>
+            {% endif %}
+            <div class="col-12">
+              <button type="submit" class="btn btn-main">
+                <i class="bi bi-save2 me-1"></i>İletişim Bilgilerini Kaydet
+              </button>
+            </div>
+          </form>
+        </div>
+      {% endif %}
+
+      <div class="tab-pane fade {% if active_tab == 'security' %}show active{% endif %}" id="tab-security" role="tabpanel" aria-labelledby="tab-security-btn">
+        <h2 class="h5 mb-3">Şifre Güncelle</h2>
+        <form method="post" class="row g-3">
+          {% csrf_token %}
+          <input type="hidden" name="form_action" value="security">
+          <div class="col-md-6">
+            <label class="form-label">{{ password_form.old_password.label }}</label>
+            {{ password_form.old_password }}
+            {% for error in password_form.old_password.errors %}
+              <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">{{ password_form.new_password1.label }}</label>
+            {{ password_form.new_password1 }}
+            {% for error in password_form.new_password1.errors %}
+              <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">{{ password_form.new_password2.label }}</label>
+            {{ password_form.new_password2 }}
+            {% for error in password_form.new_password2.errors %}
+              <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+          </div>
+          {% if password_form.non_field_errors %}
+            <div class="col-12">
+              {% for error in password_form.non_field_errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+          <div class="col-12">
+            <button type="submit" class="btn btn-main">
+              <i class="bi bi-key me-1"></i>Şifreyi Güncelle
+            </button>
+          </div>
+        </form>
+
+        {% if is_provider_user %}
+          <div class="alert alert-secondary mt-3 mb-0">
+            Profil, hizmet ve konum ayarları için <a href="{% url 'provider_profile' %}" class="alert-link">Usta Profili</a> sayfasını kullanın.
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="tab-pane fade {% if active_tab == 'danger' %}show active{% endif %}" id="tab-danger" role="tabpanel" aria-labelledby="tab-danger-btn">
+        <h2 class="h5 text-danger mb-3">Tehlikeli İşlemler</h2>
+        <p class="small text-muted mb-3">
+          Bu işlemler geri alınamaz. Hesabınızı sildiğinizde ilişkili verileriniz de kaldırılır.
+        </p>
+        <form method="post" action="{% url 'delete_account' %}" class="row g-3">
+          {% csrf_token %}
+          <div class="col-12">
+            <label class="form-label">Onay Metni</label>
+            <input type="text" name="confirmation_text" class="form-control" placeholder="HESABIMI SİL" required>
+            <div class="small text-muted mt-1">Devam etmek için tam olarak <strong>HESABIMI SİL</strong> yazın.</div>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Mevcut Şifre</label>
+            <input type="password" name="password" class="form-control" autocomplete="current-password" required>
+          </div>
+          <div class="col-12">
+            <button type="submit" class="btn btn-danger">
+              <i class="bi bi-trash3 me-1"></i>Hesabımı Kalıcı Olarak Sil
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script id="city-district-map" type="application/json">{{ city_district_map_json|safe }}</script>
+<script>
+  (function () {
+    const allowAnyDistrict = {% if is_provider_user %}false{% else %}true{% endif %};
+    const mapElement = document.getElementById("city-district-map");
+    const cityDistrictMap = mapElement ? JSON.parse(mapElement.textContent) : {};
+    const form = document.getElementById("account-contact-form");
+    if (!form) return;
+
+    const citySelect = form.querySelector("select[name='contact-city']");
+    const districtSelect = form.querySelector("select[name='contact-district']");
+    if (!citySelect || !districtSelect) return;
+
+    function repopulateDistricts() {
+      const selectedBefore = districtSelect.value;
+      const city = citySelect.value;
+      const districts = cityDistrictMap[city] || [];
+      districtSelect.innerHTML = "";
+
+      const emptyOption = document.createElement("option");
+      emptyOption.value = "";
+      emptyOption.textContent = "İlçe seçin";
+      districtSelect.appendChild(emptyOption);
+
+      if (allowAnyDistrict) {
+        const anyOption = document.createElement("option");
+        anyOption.value = "Herhangi";
+        anyOption.textContent = "Herhangi";
+        districtSelect.appendChild(anyOption);
+      }
+
+      districts.forEach(function (district) {
+        const option = document.createElement("option");
+        option.value = district;
+        option.textContent = district;
+        districtSelect.appendChild(option);
+      });
+
+      if (selectedBefore && Array.from(districtSelect.options).some(function (option) { return option.value === selectedBefore; })) {
+        districtSelect.value = selectedBefore;
+      } else {
+        districtSelect.value = "";
+      }
+    }
+
+    citySelect.addEventListener("change", repopulateDistricts);
+    repopulateDistricts();
+  })();
+</script>
+{% endblock %}

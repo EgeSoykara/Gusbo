@@ -1,6 +1,6 @@
 from django import forms
 from django.core.exceptions import ValidationError
-from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
+from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm, UserCreationForm
 from django.contrib.auth.models import User
 from django.utils import timezone
 
@@ -262,6 +262,67 @@ class ProviderProfileForm(forms.ModelForm):
 
     def clean_phone(self):
         return normalize_phone_value(self.cleaned_data.get("phone"))
+
+
+class AccountIdentityForm(forms.ModelForm):
+    class Meta:
+        model = User
+        fields = ["username", "first_name", "last_name", "email"]
+        labels = {
+            "username": "Kullanıcı Adı",
+            "first_name": "Ad",
+            "last_name": "Soyad",
+            "email": "E-posta",
+        }
+
+
+class CustomerContactSettingsForm(forms.ModelForm):
+    city = forms.ChoiceField(choices=[("", "Şehir seçin")] + NC_CITY_CHOICES, required=True, label="Şehir")
+    district = forms.ChoiceField(choices=DISTRICT_CHOICES_WITH_ANY, required=True, label="İlçe")
+
+    class Meta:
+        model = CustomerProfile
+        fields = ["phone", "city", "district"]
+        labels = {
+            "phone": "Telefon",
+        }
+        widgets = {
+            "phone": forms.TextInput(attrs=phone_widget_attrs()),
+        }
+        help_texts = {
+            "phone": PHONE_HELP_TEXT,
+        }
+
+    def clean_phone(self):
+        return normalize_phone_value(self.cleaned_data.get("phone"))
+
+
+class ProviderContactSettingsForm(forms.ModelForm):
+    city = forms.ChoiceField(choices=NC_CITY_CHOICES, required=True, label="Şehir")
+    district = forms.ChoiceField(choices=NC_DISTRICT_CHOICES, required=True, label="İlçe")
+
+    class Meta:
+        model = Provider
+        fields = ["full_name", "phone", "city", "district"]
+        labels = {
+            "full_name": "Ad Soyad",
+            "phone": "Telefon",
+        }
+        widgets = {
+            "phone": forms.TextInput(attrs=phone_widget_attrs()),
+        }
+        help_texts = {
+            "phone": PHONE_HELP_TEXT,
+        }
+
+    def clean_phone(self):
+        return normalize_phone_value(self.cleaned_data.get("phone"))
+
+
+class AccountPasswordChangeForm(PasswordChangeForm):
+    old_password = forms.CharField(label="Mevcut Şifre", widget=forms.PasswordInput(attrs={"autocomplete": "current-password"}))
+    new_password1 = forms.CharField(label="Yeni Şifre", widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}))
+    new_password2 = forms.CharField(label="Yeni Şifre (Tekrar)", widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}))
 
 
 class ProviderRatingForm(forms.ModelForm):
