@@ -10,7 +10,7 @@ from django.conf import settings
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -33,8 +33,10 @@ from .forms import (
     ServiceMessageForm,
 )
 from .models import (
+    CreditTransaction,
     CustomerProfile,
     Provider,
+    ProviderWallet,
     ProviderOffer,
     ProviderRating,
     ServiceAppointment,
@@ -96,6 +98,92 @@ def get_offer_expiry_minutes():
 
 def get_offer_reminder_minutes():
     return max(1, int(getattr(settings, "OFFER_REMINDER_MINUTES", 60)))
+
+
+def get_initial_provider_credits():
+    return max(0, int(getattr(settings, "INITIAL_PROVIDER_CREDITS", 10)))
+
+
+def get_quote_credit_cost():
+    return max(1, int(getattr(settings, "QUOTE_CREDIT_COST", 1)))
+
+
+def get_provider_package_catalog():
+    configured_packages = getattr(settings, "PROVIDER_PACKAGES", None)
+    if configured_packages:
+        normalized_packages = []
+        for package in configured_packages:
+            key = str(package.get("key", "")).strip()
+            if not key:
+                continue
+            normalized_packages.append(
+                {
+                    "key": key,
+                    "name": str(package.get("name", key)).strip() or key,
+                    "credits": max(1, int(package.get("credits", 1))),
+                    "price": max(0, int(package.get("price", 0))),
+                    "description": str(package.get("description", "")).strip(),
+                }
+            )
+        if normalized_packages:
+            return normalized_packages
+
+    return [
+        {
+            "key": "basic",
+            "name": "Basic",
+            "credits": 25,
+            "price": 199,
+            "description": "Yeni balayan ustalar için uygun kredi paketi.",
+        },
+        {
+            "key": "pro",
+            "name": "Pro",
+            "credits": 80,
+            "price": 499,
+            "description": "Youn çalıan ustalar için yüksek kredi paketi.",
+        },
+    ]
+
+
+def get_or_create_provider_wallet(provider, for_update=False):
+    initial_credits = get_initial_provider_credits()
+    wallet, created = ProviderWallet.objects.get_or_create(
+        provider=provider,
+        defaults={"balance": initial_credits},
+    )
+    if for_update:
+        wallet = ProviderWallet.objects.select_for_update().get(pk=wallet.pk)
+    if created and initial_credits > 0:
+        CreditTransaction.objects.create(
+            provider=provider,
+            wallet=wallet,
+            transaction_type="welcome",
+            amount=initial_credits,
+            balance_after=wallet.balance,
+            note="Ho geldin kredisi yüklendi.",
+        )
+    return wallet
+
+
+def apply_wallet_transaction(provider, amount, transaction_type, note="", reference_offer=None):
+    with transaction.atomic():
+        wallet = get_or_create_provider_wallet(provider, for_update=True)
+        next_balance = wallet.balance + int(amount)
+        if next_balance < 0:
+            return None
+        wallet.balance = next_balance
+        wallet.save(update_fields=["balance", "updated_at"])
+        CreditTransaction.objects.create(
+            provider=provider,
+            wallet=wallet,
+            transaction_type=transaction_type,
+            amount=int(amount),
+            balance_after=wallet.balance,
+            note=note[:240],
+            reference_offer=reference_offer,
+        )
+        return wallet
 
 
 def refresh_offer_lifecycle():
@@ -173,7 +261,7 @@ def build_unread_message_map(service_request_ids, viewer_role):
 
 def build_customer_requests_signature(user):
     request_rows = list(
-        user.service_requests.values_list("id", "status", "matched_provider_id").order_by("id")
+        user.service_requests.values_list("id", "status", "matched_provider_id", "matched_offer_id", "matched_at").order_by("id")
     )
     request_ids = [row[0] for row in request_rows]
     if not request_ids:
@@ -302,7 +390,9 @@ def dispatch_next_provider_offer(service_request):
     if not groups:
         service_request.status = "new"
         service_request.matched_provider = None
-        service_request.save(update_fields=["status", "matched_provider"])
+        service_request.matched_offer = None
+        service_request.matched_at = None
+        service_request.save(update_fields=["status", "matched_provider", "matched_offer", "matched_at"])
         return {"result": "no-candidates"}
 
     offered_provider_ids = set(service_request.provider_offers.values_list("provider_id", flat=True))
@@ -335,12 +425,16 @@ def dispatch_next_provider_offer(service_request):
 
         service_request.status = "pending_provider"
         service_request.matched_provider = None
-        service_request.save(update_fields=["status", "matched_provider"])
+        service_request.matched_offer = None
+        service_request.matched_at = None
+        service_request.save(update_fields=["status", "matched_provider", "matched_offer", "matched_at"])
         return {"result": "offers-created", "offers": created_offers}
 
     service_request.status = "new"
     service_request.matched_provider = None
-    service_request.save(update_fields=["status", "matched_provider"])
+    service_request.matched_offer = None
+    service_request.matched_at = None
+    service_request.save(update_fields=["status", "matched_provider", "matched_offer", "matched_at"])
     return {"result": "all-contacted"}
 
 
@@ -429,7 +523,7 @@ def create_request(request):
 
     provider_user = get_provider_for_user(request.user)
     if provider_user:
-        messages.error(request, "Usta hesabı ile talep oluşturamazsınız.")
+        messages.error(request, "Usta hesabı ile talep oluturamazsınız.")
         return redirect("provider_requests")
 
     request_form = ServiceRequestForm(request.POST)
@@ -482,12 +576,12 @@ def create_request(request):
     elif dispatch_result["result"] == "no-candidates":
         messages.info(
             request,
-            "Talebiniz alındı ancak şu an şehir/ilçe kriterlerinde müsait usta bulunamadı.",
+            "Talebiniz alındı ancak u an ehir/ilçe kriterlerinde müsait usta bulunamadı.",
         )
     else:
         messages.warning(
             request,
-            "Talebiniz kaydedildi fakat şu an sıradaki uygun usta bulunamadı.",
+            "Talebiniz kaydedildi fakat u an sıradaki uygun usta bulunamadı.",
         )
 
     return redirect("index")
@@ -514,12 +608,12 @@ def rate_request(request, request_id):
     if request.method != "POST":
         return redirect("my_requests")
     if get_provider_for_user(request.user):
-        messages.error(request, "Bu alan sadece müşteri hesapları içindir.")
+        messages.error(request, "Bu alan sadece müteri hesapları içindir.")
         return redirect("provider_requests")
 
     service_request = get_object_or_404(ServiceRequest, id=request_id, customer=request.user)
     if service_request.status != "completed" or service_request.matched_provider is None:
-        messages.error(request, "Puanlama sadece tamamlanmış ve eşleşmiş talepler için yapılabilir.")
+        messages.error(request, "Puanlama sadece tamamlanmı ve elemi talepler için yapılabilir.")
         return redirect("my_requests")
 
     current_rating = getattr(service_request, "provider_rating", None)
@@ -552,7 +646,7 @@ def signup_view(request):
             user = form.save()
             login(request, user)
             request.session["role"] = "customer"
-            messages.success(request, "Hesabınız oluşturuldu ve giriş yapıldı.")
+            messages.success(request, "Hesabınız oluturuldu ve giri yapıldı.")
             return redirect("index")
     else:
         form = CustomerSignupForm()
@@ -579,7 +673,7 @@ def provider_signup_view(request):
             user = form.save()
             login(request, user)
             request.session["role"] = "provider"
-            messages.success(request, "Usta hesabı oluşturuldu ve giriş yapıldı.")
+            messages.success(request, "Usta hesabı oluturuldu ve giri yapıldı.")
             return redirect("provider_requests")
     else:
         form = ProviderSignupForm()
@@ -605,7 +699,7 @@ def login_view(request):
         if form.is_valid():
             login(request, form.get_user())
             request.session["role"] = "customer"
-            messages.success(request, "Giriş başarılı.")
+            messages.success(request, "Giri baarılı.")
             return redirect("index")
     else:
         form = CustomerLoginForm(request)
@@ -624,7 +718,7 @@ def provider_login_view(request):
         if form.is_valid():
             login(request, form.get_user())
             request.session["role"] = "provider"
-            messages.success(request, "Usta girişi başarılı.")
+            messages.success(request, "Usta girii baarılı.")
             return redirect("provider_requests")
     else:
         form = ProviderLoginForm(request)
@@ -636,7 +730,7 @@ def logout_view(request):
     if request.method == "POST":
         logout(request)
         request.session.pop("role", None)
-        messages.info(request, "Çıkış yapıldı.")
+        messages.info(request, "ıkı yapıldı.")
     return redirect("index")
 
 
@@ -729,11 +823,16 @@ def request_messages(request, request_id):
 def my_requests(request):
     refresh_offer_lifecycle()
     if get_provider_for_user(request.user):
-        messages.error(request, "Bu alan sadece müşteri hesapları içindir.")
+        messages.error(request, "Bu alan sadece müteri hesapları içindir.")
         return redirect("provider_requests")
 
     requests = list(
-        request.user.service_requests.select_related("service_type", "matched_provider").prefetch_related(
+        request.user.service_requests.select_related(
+            "service_type",
+            "matched_provider",
+            "matched_offer",
+            "matched_offer__provider",
+        ).prefetch_related(
             "provider_offers",
             "provider_offers__provider",
         )
@@ -768,6 +867,65 @@ def my_requests(request):
 
 
 @login_required
+def agreement_history(request):
+    provider = get_provider_for_user(request.user)
+    if provider:
+        agreements_qs = (
+            ServiceRequest.objects.filter(
+                matched_provider=provider,
+                matched_offer__isnull=False,
+            )
+            .select_related(
+                "service_type",
+                "customer",
+                "matched_provider",
+                "matched_offer",
+                "matched_offer__provider",
+            )
+            .order_by("-matched_at", "-created_at")
+        )
+    else:
+        agreements_qs = (
+            request.user.service_requests.filter(matched_offer__isnull=False)
+            .select_related(
+                "service_type",
+                "customer",
+                "matched_provider",
+                "matched_offer",
+                "matched_offer__provider",
+            )
+            .order_by("-matched_at", "-created_at")
+        )
+
+    agreements = list(agreements_qs)
+    appointment_map = {
+        appointment.service_request_id: appointment
+        for appointment in ServiceAppointment.objects.filter(service_request_id__in=[item.id for item in agreements])
+    }
+    for item in agreements:
+        item.appointment_entry = appointment_map.get(item.id)
+
+    summary = agreements_qs.aggregate(
+        total_count=Count("id"),
+        completed_count=Count("id", filter=Q(status="completed")),
+        matched_count=Count("id", filter=Q(status="matched")),
+        total_quote=Sum("matched_offer__quote_amount"),
+    )
+    return render(
+        request,
+        "Myapp/agreement_history.html",
+        {
+            "agreements": agreements,
+            "is_provider_user": bool(provider),
+            "summary_total_count": summary.get("total_count", 0) or 0,
+            "summary_completed_count": summary.get("completed_count", 0) or 0,
+            "summary_matched_count": summary.get("matched_count", 0) or 0,
+            "summary_total_quote": summary.get("total_quote"),
+        },
+    )
+
+
+@login_required
 @never_cache
 def customer_requests_snapshot(request):
     if get_provider_for_user(request.user):
@@ -782,12 +940,12 @@ def complete_request(request, request_id):
     if request.method != "POST":
         return redirect("my_requests")
     if get_provider_for_user(request.user):
-        messages.error(request, "Bu alan sadece müşteri hesapları içindir.")
+        messages.error(request, "Bu alan sadece müteri hesapları içindir.")
         return redirect("provider_requests")
 
     service_request = get_object_or_404(ServiceRequest, id=request_id, customer=request.user)
     if service_request.status != "matched":
-        messages.warning(request, "Sadece eşleşen talepler tamamlandı olarak işaretlenebilir.")
+        messages.warning(request, "Sadece eleen talepler tamamlandı olarak iaretlenebilir.")
         return redirect("my_requests")
 
     appointment = ServiceAppointment.objects.filter(service_request=service_request).first()
@@ -814,12 +972,12 @@ def complete_request(request, request_id):
 @require_POST
 def create_appointment(request, request_id):
     if get_provider_for_user(request.user):
-        messages.error(request, "Bu alan sadece müşteri hesapları içindir.")
+        messages.error(request, "Bu alan sadece müteri hesapları içindir.")
         return redirect("provider_requests")
 
     service_request = get_object_or_404(ServiceRequest, id=request_id, customer=request.user)
     if service_request.status != "matched" or service_request.matched_provider is None:
-        messages.warning(request, "Randevu sadece eşleşen talepler için oluşturulabilir.")
+        messages.warning(request, "Randevu sadece eleen talepler için oluturulabilir.")
         return redirect("my_requests")
 
     form = AppointmentCreateForm(request.POST)
@@ -829,7 +987,7 @@ def create_appointment(request, request_id):
 
     existing = ServiceAppointment.objects.filter(service_request=service_request).first()
     if existing and existing.status == "completed":
-        messages.warning(request, "Tamamlanan bir talep için yeni randevu oluşturulamaz.")
+        messages.warning(request, "Tamamlanan bir talep için yeni randevu oluturulamaz.")
         return redirect("my_requests")
 
     scheduled_for = form.cleaned_data["scheduled_for"]
@@ -885,7 +1043,7 @@ def create_appointment(request, request_id):
 @require_POST
 def cancel_appointment(request, request_id):
     if get_provider_for_user(request.user):
-        messages.error(request, "Bu alan sadece müşteri hesapları içindir.")
+        messages.error(request, "Bu alan sadece müteri hesapları içindir.")
         return redirect("provider_requests")
 
     service_request = get_object_or_404(ServiceRequest, id=request_id, customer=request.user)
@@ -904,7 +1062,7 @@ def cancel_appointment(request, request_id):
 @require_POST
 def customer_confirm_appointment(request, request_id):
     if get_provider_for_user(request.user):
-        messages.error(request, "Bu alan sadece müşteri hesapları içindir.")
+        messages.error(request, "Bu alan sadece müteri hesapları içindir.")
         return redirect("provider_requests")
 
     service_request = get_object_or_404(ServiceRequest, id=request_id, customer=request.user)
@@ -918,7 +1076,7 @@ def customer_confirm_appointment(request, request_id):
     send_sms(
         appointment.provider.phone,
         (
-            f"UstaBul randevu: Müşteri Talep #{service_request.id} randevusunu onayladı. "
+            f"UstaBul randevu: Müteri Talep #{service_request.id} randevusunu onayladı. "
             f"Tarih: {timezone.localtime(appointment.scheduled_for).strftime('%d.%m %H:%M')}"
         ),
     )
@@ -930,7 +1088,7 @@ def customer_confirm_appointment(request, request_id):
 @require_POST
 def cancel_request(request, request_id):
     if get_provider_for_user(request.user):
-        messages.error(request, "Bu alan sadece müşteri hesapları içindir.")
+        messages.error(request, "Bu alan sadece müteri hesapları içindir.")
         return redirect("provider_requests")
 
     service_request = get_object_or_404(ServiceRequest, id=request_id, customer=request.user)
@@ -942,7 +1100,9 @@ def cancel_request(request, request_id):
     service_request.provider_offers.filter(status__in=["pending", "accepted"]).update(status="expired", responded_at=now)
     service_request.status = "cancelled"
     service_request.matched_provider = None
-    service_request.save(update_fields=["status", "matched_provider"])
+    service_request.matched_offer = None
+    service_request.matched_at = None
+    service_request.save(update_fields=["status", "matched_provider", "matched_offer", "matched_at"])
     messages.success(request, "Talep aramasi iptal edildi.")
     return redirect("my_requests")
 
@@ -951,7 +1111,7 @@ def cancel_request(request, request_id):
 @require_POST
 def delete_cancelled_request(request, request_id):
     if get_provider_for_user(request.user):
-        messages.error(request, "Bu alan sadece müşteri hesapları içindir.")
+        messages.error(request, "Bu alan sadece müteri hesapları içindir.")
         return redirect("provider_requests")
 
     service_request = get_object_or_404(ServiceRequest, id=request_id, customer=request.user)
@@ -968,7 +1128,7 @@ def delete_cancelled_request(request, request_id):
 @require_POST
 def delete_all_cancelled_requests(request):
     if get_provider_for_user(request.user):
-        messages.error(request, "Bu alan sadece müşteri hesapları içindir.")
+        messages.error(request, "Bu alan sadece müteri hesapları içindir.")
         return redirect("provider_requests")
 
     deleted_count, _ = request.user.service_requests.filter(status="cancelled").delete()
@@ -991,32 +1151,41 @@ def select_provider_offer(request, request_id, offer_id):
         messages.warning(request, "Bu talep için usta seçimi artık yapılamaz.")
         return redirect("my_requests")
 
-    selected_offer = get_object_or_404(
-        ProviderOffer.objects.select_related("provider"),
-        id=offer_id,
-        service_request=service_request,
-        status="accepted",
-    )
-
     with transaction.atomic():
         service_request = ServiceRequest.objects.select_for_update().filter(id=service_request.id).first()
         if not service_request:
             messages.warning(request, "Talep bulunamadı.")
             return redirect("my_requests")
-        if service_request.matched_provider_id is not None or service_request.status == "matched":
-            messages.warning(request, "Bu talep zaten eşleşmiş.")
+        if service_request.status not in {"pending_provider", "pending_customer"} or service_request.matched_provider_id is not None:
+            messages.warning(request, "Bu talep zaten eşleştirilmiş.")
             return redirect("my_requests")
 
+        selected_offer = (
+            ProviderOffer.objects.select_for_update()
+            .select_related("provider")
+            .filter(
+                id=offer_id,
+                service_request=service_request,
+                status="accepted",
+            )
+            .first()
+        )
+        if not selected_offer:
+            messages.warning(request, "Bu teklif artık seçilemez.")
+            return redirect("my_requests")
+
+        now = timezone.now()
         ProviderOffer.objects.filter(service_request=service_request).exclude(id=selected_offer.id).filter(
             status__in=["pending", "accepted"]
-        ).update(status="expired", responded_at=timezone.now())
+        ).update(status="expired", responded_at=now)
         service_request.matched_provider = selected_offer.provider
+        service_request.matched_offer = selected_offer
+        service_request.matched_at = now
         service_request.status = "matched"
-        service_request.save(update_fields=["matched_provider", "status"])
+        service_request.save(update_fields=["matched_provider", "matched_offer", "matched_at", "status"])
 
     messages.success(request, f"Talep #{service_request.id} için {selected_offer.provider.full_name} seçildi.")
     return redirect("my_requests")
-
 
 @login_required
 def provider_requests(request):
@@ -1025,6 +1194,7 @@ def provider_requests(request):
     if not provider:
         messages.error(request, "Bu alan sadece usta hesapları içindir.")
         return redirect("provider_login")
+    wallet = get_or_create_provider_wallet(provider)
 
     pending_offers = list(
         provider.offers.filter(status="pending")
@@ -1070,6 +1240,8 @@ def provider_requests(request):
         "Myapp/provider_requests.html",
         {
             "provider": provider,
+            "wallet": wallet,
+            "quote_credit_cost": get_quote_credit_cost(),
             "pending_offers": pending_offers,
             "recent_offers": recent_offers,
             "pending_appointments": pending_appointments,
@@ -1089,10 +1261,12 @@ def provider_panel_snapshot(request):
         return JsonResponse({"detail": "forbidden"}, status=403)
 
     refresh_offer_lifecycle()
+    wallet = get_or_create_provider_wallet(provider)
     pending_offers_qs = provider.offers.filter(status="pending").order_by("-sent_at")
     latest_pending_offer = pending_offers_qs.values("id").first()
 
     payload = {
+        "wallet_balance": wallet.balance,
         "pending_offers_count": pending_offers_qs.count(),
         "latest_pending_offer_id": latest_pending_offer["id"] if latest_pending_offer else 0,
         "pending_appointments_count": provider.appointments.filter(status="pending").count(),
@@ -1101,6 +1275,57 @@ def provider_panel_snapshot(request):
     response = JsonResponse(payload)
     response["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return response
+
+
+@login_required
+@never_cache
+@ensure_csrf_cookie
+def provider_packages(request):
+    provider = get_provider_for_user(request.user)
+    if not provider:
+        messages.error(request, "Bu alan sadece usta hesapları içindir.")
+        return redirect("provider_login")
+
+    packages = get_provider_package_catalog()
+    package_map = {package["key"]: package for package in packages}
+    quote_credit_cost = get_quote_credit_cost()
+
+    if request.method == "POST":
+        package_key = (request.POST.get("package_key") or "").strip()
+        selected_package = package_map.get(package_key)
+        if not selected_package:
+            messages.warning(request, "Geçersiz paket seçimi.")
+            return redirect("provider_packages")
+
+        wallet = apply_wallet_transaction(
+            provider=provider,
+            amount=selected_package["credits"],
+            transaction_type="package_purchase",
+            note=f"{selected_package['name']} paketi satın alındı ({selected_package['price']} TL).",
+        )
+        if wallet is None:
+            messages.error(request, "Paket satın alma sırasında bir sorun olutu.")
+            return redirect("provider_packages")
+
+        messages.success(
+            request,
+            f"{selected_package['name']} paketi aktif edildi. +{selected_package['credits']} kredi yüklendi.",
+        )
+        return redirect("provider_packages")
+
+    wallet = get_or_create_provider_wallet(provider)
+    transactions = list(provider.credit_transactions.select_related("reference_offer").order_by("-created_at")[:30])
+    return render(
+        request,
+        "Myapp/provider_packages.html",
+        {
+            "provider": provider,
+            "wallet": wallet,
+            "packages": packages,
+            "transactions": transactions,
+            "quote_credit_cost": quote_credit_cost,
+        },
+    )
 
 
 def provider_detail(request, provider_id):
@@ -1143,7 +1368,7 @@ def provider_confirm_appointment(request, appointment_id):
         provider=provider,
     )
     if appointment.status != "pending":
-        messages.warning(request, "Bu randevu talebi artık açık değil.")
+        messages.warning(request, "Bu randevu talebi artık açık deil.")
         return redirect("provider_requests")
 
     provider_note = (request.POST.get("provider_note") or "").strip()
@@ -1154,10 +1379,10 @@ def provider_confirm_appointment(request, appointment_id):
         appointment.service_request.customer_phone,
         (
             f"UstaBul randevu: Talep #{appointment.service_request_id} için usta onayı verildi. "
-            "Müşteri panelinden son onayı tamamlayın."
+            "Müteri panelinden son onayı tamamlayın."
         ),
     )
-    messages.success(request, f"Talep #{appointment.service_request_id} için usta onayı verildi. Müşteri onayı bekleniyor.")
+    messages.success(request, f"Talep #{appointment.service_request_id} için usta onayı verildi. Müteri onayı bekleniyor.")
     return redirect("provider_requests")
 
 
@@ -1191,7 +1416,7 @@ def provider_complete_appointment(request, appointment_id):
             service_request.save(update_fields=["status"])
 
     purge_request_messages(service_request.id)
-    messages.success(request, f"Talep #{service_request.id} randevusu tamamlandı olarak işaretlendi.")
+    messages.success(request, f"Talep #{service_request.id} randevusu tamamlandı olarak iaretlendi.")
     return redirect("provider_requests")
 
 
@@ -1209,7 +1434,7 @@ def provider_reject_appointment(request, appointment_id):
         provider=provider,
     )
     if appointment.status != "pending":
-        messages.warning(request, "Bu randevu talebi artık açık değil.")
+        messages.warning(request, "Bu randevu talebi artık açık deil.")
         return redirect("provider_requests")
 
     provider_note = (request.POST.get("provider_note") or "").strip()
@@ -1241,18 +1466,18 @@ def provider_accept_offer(request, offer_id):
 
         service_request = ServiceRequest.objects.select_for_update().filter(id=offer.service_request_id).first()
         if not service_request:
-            messages.warning(request, "Talep artık mevcut değil.")
+            messages.warning(request, "Talep artık mevcut deil.")
             return redirect("provider_requests")
 
         if offer.status != "pending":
-            messages.warning(request, "Bu teklif artık açık değil.")
+            messages.warning(request, "Bu teklif artık açık deil.")
             return redirect("provider_requests")
 
         if service_request.status in {"matched", "completed", "cancelled"}:
             offer.status = "expired"
             offer.responded_at = timezone.now()
             offer.save(update_fields=["status", "responded_at"])
-            messages.warning(request, "Bu talep artık açık değil.")
+            messages.warning(request, "Bu talep artık açık deil.")
             return redirect("provider_requests")
 
         raw_quote_amount = (request.POST.get("quote_amount") or "").strip().replace(",", ".")
@@ -1269,16 +1494,38 @@ def provider_accept_offer(request, offer_id):
             return redirect("provider_requests")
 
         quote_note = (request.POST.get("quote_note") or "").strip()[:240]
+        quote_credit_cost = get_quote_credit_cost()
+        wallet = get_or_create_provider_wallet(provider, for_update=True)
+        if wallet.balance < quote_credit_cost:
+            messages.warning(
+                request,
+                f"Teklif göndermek için en az {quote_credit_cost} kredi gerekli. Mevcut kredi: {wallet.balance}.",
+            )
+            return redirect("provider_packages")
+
         now = timezone.now()
         offer.status = "accepted"
         offer.responded_at = now
         offer.quote_amount = quote_amount
         offer.quote_note = quote_note
         offer.save(update_fields=["status", "responded_at", "quote_amount", "quote_note"])
+
+        wallet.balance -= quote_credit_cost
+        wallet.save(update_fields=["balance", "updated_at"])
+        CreditTransaction.objects.create(
+            provider=provider,
+            wallet=wallet,
+            transaction_type="quote_fee",
+            amount=-quote_credit_cost,
+            balance_after=wallet.balance,
+            note=f"Talep #{service_request.id} için teklif kredisi düüldü.",
+            reference_offer=offer,
+        )
+
         service_request.status = "pending_customer"
         service_request.save(update_fields=["status"])
 
-    messages.success(request, f"Talep #{service_request.id} için teklifiniz müşteriye gönderildi.")
+    messages.success(request, f"Talep #{service_request.id} için teklifiniz müteriye gönderildi.")
     return redirect("provider_requests")
 
 
@@ -1310,14 +1557,14 @@ def provider_reject_offer(request, offer_id):
             service_request.save(update_fields=["status"])
         messages.info(
             request,
-            f"Talep #{service_request.id} reddedildi. Diğer ustalardan gelecek onay bekleniyor.",
+            f"Talep #{service_request.id} reddedildi. Dier ustalardan gelecek onay bekleniyor.",
         )
         return redirect("provider_requests")
 
     if has_accepted_offer:
         service_request.status = "pending_customer"
         service_request.save(update_fields=["status"])
-        messages.info(request, f"Talep #{service_request.id} reddedildi. Müşterinin teklif seçimi bekleniyor.")
+        messages.info(request, f"Talep #{service_request.id} reddedildi. Müterinin teklif seçimi bekleniyor.")
         return redirect("provider_requests")
 
     dispatch_result = dispatch_next_provider_offer(service_request)

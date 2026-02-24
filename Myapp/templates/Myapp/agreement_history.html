@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card panel-card shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+      <h1 class="h4 mb-0"><i class="bi bi-journal-check me-2"></i>Anlaşma Geçmişi</h1>
+      {% if is_provider_user %}
+        <a class="btn btn-sm btn-main" href="{% url 'provider_requests' %}">
+          <i class="bi bi-briefcase me-1"></i>Usta Paneline Dön
+        </a>
+      {% else %}
+        <a class="btn btn-sm btn-main" href="{% url 'my_requests' %}">
+          <i class="bi bi-kanban me-1"></i>Taleplerime Dön
+        </a>
+      {% endif %}
+    </div>
+    <p class="text-muted mt-2 mb-0">
+      Kimle, hangi tutarda ve ne zaman anlaşıldığını bu ekrandan takip edebilirsin.
+    </p>
+  </div>
+</section>
+
+<section class="row g-3 mb-4">
+  <div class="col-12 col-md-4">
+    <div class="card panel-card shadow-sm h-100">
+      <div class="card-body p-3">
+        <div class="small text-muted">Toplam Anlaşma</div>
+        <div class="h4 mb-0">{{ summary_total_count }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card panel-card shadow-sm h-100">
+      <div class="card-body p-3">
+        <div class="small text-muted">Aktif Eşleşme</div>
+        <div class="h4 mb-0">{{ summary_matched_count }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card panel-card shadow-sm h-100">
+      <div class="card-body p-3">
+        <div class="small text-muted">Tamamlanan İş</div>
+        <div class="h4 mb-0">{{ summary_completed_count }}</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="card panel-card shadow-sm reveal-up">
+  <div class="card-body p-4">
+    {% if agreements %}
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <h2 class="h5 mb-0"><i class="bi bi-list-check me-2"></i>Anlaşma Kayıtları</h2>
+        <span class="small text-muted">
+          Toplam teklif tutarı:
+          {% if summary_total_quote %}{{ summary_total_quote }} TL{% else %}-{% endif %}
+        </span>
+      </div>
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Talep No</th>
+              <th>Hizmet</th>
+              {% if is_provider_user %}
+                <th>Müşteri</th>
+              {% else %}
+                <th>Usta</th>
+              {% endif %}
+              <th>Teklif</th>
+              <th>Anlaşma Zamanı</th>
+              <th>Durum</th>
+              <th>Randevu</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in agreements %}
+              <tr>
+                <td>#{{ item.id }}</td>
+                <td>{{ item.service_type.name }}</td>
+                {% if is_provider_user %}
+                  <td>
+                    {{ item.customer_name }}
+                    <div class="small text-muted">{{ item.customer_phone }}</div>
+                  </td>
+                {% else %}
+                  <td>
+                    {% if item.matched_provider %}
+                      {{ item.matched_provider.full_name }}
+                      <div class="small text-muted">{{ item.matched_provider.phone }}</div>
+                    {% else %}
+                      <span class="small text-muted">-</span>
+                    {% endif %}
+                  </td>
+                {% endif %}
+                <td>
+                  {% if item.matched_offer and item.matched_offer.quote_amount %}
+                    {{ item.matched_offer.quote_amount }} TL
+                  {% else %}
+                    <span class="small text-muted">Belirtilmedi</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if item.matched_at %}
+                    {{ item.matched_at|date:"d.m.Y H:i" }}
+                  {% else %}
+                    <span class="small text-muted">-</span>
+                  {% endif %}
+                </td>
+                <td><span class="status-pill status-{{ item.status }}">{{ item.get_status_display }}</span></td>
+                <td>
+                  {% if item.appointment_entry %}
+                    <div class="small fw-semibold">{{ item.appointment_entry.scheduled_for|date:"d.m.Y H:i" }}</div>
+                    <span class="status-pill appointment-status appointment-{{ item.appointment_entry.status }}">
+                      {{ item.appointment_entry.get_status_display }}
+                    </span>
+                  {% else %}
+                    <span class="small text-muted">Randevu yok</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="mb-0 text-muted">Henüz kayıtlı bir anlaşma bulunmuyor.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

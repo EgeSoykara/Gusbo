@@ -68,6 +68,14 @@ class ServiceRequest(models.Model):
         blank=True,
         related_name="service_requests",
     )
+    matched_offer = models.ForeignKey(
+        "ProviderOffer",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="matched_requests",
+    )
+    matched_at = models.DateTimeField(null=True, blank=True)
     customer = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -155,6 +163,48 @@ class ProviderOffer(models.Model):
 
     def __str__(self):
         return f"Talep {self.service_request_id} -> {self.provider.full_name} ({self.status})"
+
+
+class ProviderWallet(models.Model):
+    provider = models.OneToOneField(Provider, on_delete=models.CASCADE, related_name="wallet")
+    balance = models.PositiveIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Cuzdan {self.provider.full_name}: {self.balance}"
+
+
+class CreditTransaction(models.Model):
+    TYPE_CHOICES = (
+        ("welcome", "Hos Geldin Kredisi"),
+        ("admin_load", "Admin Yukleme"),
+        ("package_purchase", "Paket Satin Alimi"),
+        ("quote_fee", "Teklif Kredisi"),
+        ("adjustment", "Duzeltme"),
+    )
+
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name="credit_transactions")
+    wallet = models.ForeignKey(ProviderWallet, on_delete=models.CASCADE, related_name="transactions")
+    transaction_type = models.CharField(max_length=30, choices=TYPE_CHOICES)
+    amount = models.IntegerField()
+    balance_after = models.PositiveIntegerField()
+    note = models.CharField(max_length=240, blank=True)
+    reference_offer = models.ForeignKey(
+        ProviderOffer,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="credit_transactions",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        sign = "+" if self.amount >= 0 else ""
+        return f"{self.provider.full_name} {sign}{self.amount} => {self.balance_after}"
 
 
 class CustomerProfile(models.Model):

@@ -13,6 +13,9 @@
             </button>
           </form>
         {% endif %}
+        <a class="btn btn-outline-secondary" href="{% url 'agreement_history' %}">
+          <i class="bi bi-journal-check me-1"></i>Anlaşma Geçmişi
+        </a>
         <a class="btn btn-main" href="{% url 'index' %}#talep-form"><i class="bi bi-plus-circle me-1"></i>Yeni Talep</a>
       </div>
     </div>
@@ -40,6 +43,12 @@
                 <td>
                   {% if item.matched_provider %}
                     {{ item.matched_provider.full_name }} ({{ item.matched_provider.phone }})
+                    {% if item.matched_offer and item.matched_offer.quote_amount %}
+                      <br><span class="small text-muted">Anlaşılan teklif: {{ item.matched_offer.quote_amount }} TL</span>
+                    {% endif %}
+                    {% if item.matched_at %}
+                      <br><span class="small text-muted">Anlaşma zamanı: {{ item.matched_at|date:"d.m.Y H:i" }}</span>
+                    {% endif %}
                   {% elif item.status == "pending_customer" and item.accepted_offers %}
                     {{ item.accepted_offers|length }} teklif geldi
                   {% elif item.status == "pending_provider" and item.pending_offer %}

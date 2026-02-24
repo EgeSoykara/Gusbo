@@ -165,3 +165,7 @@ OFFER_REMINDER_MINUTES = int(os.getenv("OFFER_REMINDER_MINUTES", "60"))
 SMS_WEBHOOK_URL = os.getenv("SMS_WEBHOOK_URL", "")
 SMS_WEBHOOK_TOKEN = os.getenv("SMS_WEBHOOK_TOKEN", "")
 SMS_DEBUG_FALLBACK = os.getenv("SMS_DEBUG_FALLBACK", "1") not in {"0", "false", "False"}
+
+# Credit economy
+INITIAL_PROVIDER_CREDITS = int(os.getenv("INITIAL_PROVIDER_CREDITS", "10"))
+QUOTE_CREDIT_COST = int(os.getenv("QUOTE_CREDIT_COST", "1"))

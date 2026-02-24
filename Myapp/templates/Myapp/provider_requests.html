@@ -5,17 +5,21 @@
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
       <h1 class="h4 mb-0"><i class="bi bi-briefcase-fill me-2"></i>Usta Paneli</h1>
       <div class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="status-pill status-pending_customer">Kredi: {{ wallet.balance }}</span>
         <span class="small text-muted">{{ provider.full_name }} - {{ provider.city }}/{{ provider.district }}</span>
+        <a href="{% url 'agreement_history' %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-journal-check me-1"></i>Anlaşmalar</a>
+        <a href="{% url 'provider_packages' %}" class="btn btn-sm btn-main"><i class="bi bi-wallet2 me-1"></i>Paketler</a>
         <a href="{% url 'provider_profile' %}" class="btn btn-sm nav-ghost-btn"><i class="bi bi-person-vcard me-1"></i>Profili Düzenle</a>
       </div>
     </div>
-    <p class="mb-0 text-muted">Yeni talepler burada sıralı gelir. Teklif gönderip müşterinin seçmesini bekleyebilirsiniz.</p>
+    <p class="mb-0 text-muted">Yeni talepler burada sıralı gelir. Teklif gönderiminde {{ quote_credit_cost }} kredi düşer.</p>
   </div>
 </section>
 
 <div
   id="provider-live-sync"
   data-snapshot-url="{% url 'provider_panel_snapshot' %}"
+  data-wallet-balance="{{ wallet.balance }}"
   data-pending-offers-count="{{ pending_offers|length }}"
   data-latest-pending-offer-id="{% if pending_offers %}{{ pending_offers.0.id }}{% else %}0{% endif %}"
   data-pending-appointments-count="{{ pending_appointments|length }}"
@@ -347,6 +351,7 @@
     if (!snapshotUrl) return;
 
     let baseline = {
+      walletBalance: Number(syncRoot.dataset.walletBalance || 0),
       pendingOffersCount: Number(syncRoot.dataset.pendingOffersCount || 0),
       latestPendingOfferId: Number(syncRoot.dataset.latestPendingOfferId || 0),
       pendingAppointmentsCount: Number(syncRoot.dataset.pendingAppointmentsCount || 0),
@@ -365,6 +370,7 @@
         if (!response.ok) return;
         const payload = await response.json();
         const nextState = {
+          walletBalance: Number(payload.wallet_balance || 0),
           pendingOffersCount: Number(payload.pending_offers_count || 0),
           latestPendingOfferId: Number(payload.latest_pending_offer_id || 0),
           pendingAppointmentsCount: Number(payload.pending_appointments_count || 0),
@@ -372,6 +378,7 @@
         };
 
         const hasChanges =
+          nextState.walletBalance !== baseline.walletBalance ||
           nextState.pendingOffersCount !== baseline.pendingOffersCount ||
           nextState.latestPendingOfferId !== baseline.latestPendingOfferId ||
           nextState.pendingAppointmentsCount !== baseline.pendingAppointmentsCount ||
