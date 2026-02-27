@@ -17,7 +17,7 @@
   <link rel="manifest" href="{% static 'pwa/manifest.webmanifest' %}">
   <link rel="icon" href="{% static 'pwa/icon-192.png' %}">
   <link rel="apple-touch-icon" href="{% static 'pwa/icon-192.png' %}">
-  <link rel="stylesheet" href="{% static 'css/style.css' %}?v=20260223-1">
+  <link rel="stylesheet" href="{% static 'css/style.css' %}?v=20260224-7">
 </head>
 <body>
 <div class="bg-orb orb-a"></div>
@@ -44,12 +44,11 @@
         <div class="navbar-nav nav-links ms-lg-4">
           <a class="nav-link {% if request.path == '/' %}active{% endif %}" href="{% url 'index' %}"><i class="bi bi-house-door me-1"></i>Ana Sayfa</a>
           {% if request.user.is_authenticated and request.session.role == "provider" %}
-            <a class="nav-link {% if request.path == '/usta/talepler/' %}active{% endif %}" href="{% url 'provider_requests' %}"><i class="bi bi-briefcase me-1"></i>Usta Paneli</a>
+            <a class="nav-link {% if request.path == '/usta/talepler/' %}active{% endif %}" href="{% url 'provider_requests' %}" data-live-provider-nav><i class="bi bi-briefcase me-1"></i>Usta Paneli</a>
             <a class="nav-link {% if request.path == '/anlasmalar/' %}active{% endif %}" href="{% url 'agreement_history' %}"><i class="bi bi-journal-check me-1"></i>Anlaşmalar</a>
-            <a class="nav-link {% if request.path == '/usta/paketler/' %}active{% endif %}" href="{% url 'provider_packages' %}"><i class="bi bi-wallet2 me-1"></i>Kredi Paketleri</a>
             <a class="nav-link {% if request.path == '/usta/profil/' %}active{% endif %}" href="{% url 'provider_profile' %}"><i class="bi bi-person-vcard me-1"></i>Usta Profili</a>
           {% elif request.user.is_authenticated %}
-            <a class="nav-link {% if request.path == '/taleplerim/' %}active{% endif %}" href="{% url 'my_requests' %}"><i class="bi bi-kanban me-1"></i>Taleplerim</a>
+            <a class="nav-link {% if request.path == '/taleplerim/' %}active{% endif %}" href="{% url 'my_requests' %}" data-live-customer-nav><i class="bi bi-kanban me-1"></i>Taleplerim</a>
             <a class="nav-link {% if request.path == '/anlasmalar/' %}active{% endif %}" href="{% url 'agreement_history' %}"><i class="bi bi-journal-check me-1"></i>Anlaşmalar</a>
           {% endif %}
           <a class="nav-link {% if request.path == '/contact/' %}active{% endif %}" href="{% url 'contact' %}"><i class="bi bi-chat-dots me-1"></i>İletişim</a>
@@ -59,7 +58,7 @@
           {% if request.user.is_authenticated %}
             <span class="user-chip d-none d-md-inline-flex"><i class="bi bi-person-circle me-1"></i>{{ request.user.username }}</span>
             {% if request.session.role == "provider" %}
-              <a class="btn nav-cta-btn d-none d-md-inline-flex" href="{% url 'provider_requests' %}">
+              <a class="btn nav-cta-btn d-none d-md-inline-flex" href="{% url 'provider_requests' %}" data-live-provider-nav>
                 <i class="bi bi-briefcase-fill me-1"></i>Usta Paneli
               </a>
             {% else %}
@@ -116,7 +115,7 @@
     const updateIcon = function () {
       const isDark = root.getAttribute("data-theme") === "dark";
       btn.innerHTML = isDark
-        ? '<i class="bi bi-brightness-high-fill"></i>'
+         '<i class="bi bi-brightness-high-fill"></i>'
         : '<i class="bi bi-moon-stars-fill"></i>';
     };
 
@@ -212,6 +211,178 @@
       installBtn.hidden = true;
       deferredPrompt = null;
     });
+  })();
+</script>
+<script>
+  (function () {
+    const isAuthenticated = {% if request.user.is_authenticated %}true{% else %}false{% endif %};
+    if (!isAuthenticated) return;
+
+    if (document.getElementById("provider-live-sync") || document.getElementById("customer-live-sync")) {
+      return;
+    }
+
+    const isProvider = {% if request.user.is_authenticated and request.session.role == "provider" %}true{% else %}false{% endif %};
+    const snapshotUrl = isProvider
+      ? "{% url 'provider_panel_snapshot' %}"
+      : "{% url 'customer_requests_snapshot' %}";
+    const navSelector = isProvider ? "[data-live-provider-nav]" : "[data-live-customer-nav]";
+    const badgeCountKey = isProvider ? "ustabul_provider_unseen_count" : "ustabul_customer_unseen_count";
+    const snapshotKey = isProvider ? "ustabul_provider_last_snapshot" : "ustabul_customer_last_snapshot";
+
+    function renderNavBadge(count) {
+      const targets = document.querySelectorAll(navSelector);
+      if (!targets.length) return;
+      targets.forEach(function (target) {
+        let badge = target.querySelector(".nav-live-badge");
+        if (!count) {
+          if (badge) badge.remove();
+          return;
+        }
+        if (!badge) {
+          badge = document.createElement("span");
+          badge.className = "nav-live-badge";
+          target.appendChild(badge);
+        }
+        badge.textContent = count > 99 ? "99+" : String(count);
+      });
+    }
+
+    function readBadgeCount() {
+      try {
+        const raw = Number(localStorage.getItem(badgeCountKey) || 0);
+        return Number.isFinite(raw) && raw > 0 ? raw : 0;
+      } catch (error) {
+        void error;
+        return 0;
+      }
+    }
+
+    function writeBadgeCount(value) {
+      const safeValue = Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+      try {
+        localStorage.setItem(badgeCountKey, String(safeValue));
+      } catch (error) {
+        void error;
+      }
+      renderNavBadge(safeValue);
+    }
+
+    function readSnapshot() {
+      try {
+        const raw = localStorage.getItem(snapshotKey);
+        if (!raw) return null;
+        return JSON.parse(raw);
+      } catch (error) {
+        void error;
+        return null;
+      }
+    }
+
+    function writeSnapshot(snapshot) {
+      try {
+        localStorage.setItem(snapshotKey, JSON.stringify(snapshot));
+      } catch (error) {
+        void error;
+      }
+    }
+
+    function buildProviderSnapshot(payload) {
+      return {
+        pendingOffersCount: Number(payload.pending_offers_count || 0),
+        latestPendingOfferId: Number(payload.latest_pending_offer_id || 0),
+        pendingAppointmentsCount: Number(payload.pending_appointments_count || 0),
+        unreadMessagesCount: Number(payload.unread_messages_count || 0),
+      };
+    }
+
+    function buildCustomerSnapshot(payload) {
+      return {
+        acceptedOffersCount: Number(payload.accepted_offers_count || 0),
+        pendingCustomerAppointmentsCount: Number(payload.pending_customer_appointments_count || 0),
+        confirmedAppointmentsCount: Number(payload.confirmed_appointments_count || 0),
+        unreadMessagesCount: Number(payload.unread_messages_count || 0),
+        pendingCustomerRequestsCount: Number(payload.pending_customer_requests_count || 0),
+        matchedRequestsCount: Number(payload.matched_requests_count || 0),
+        signature: String(payload.signature || ""),
+      };
+    }
+
+    function getProviderIncrement(previous, nextState) {
+      if (!previous) return 0;
+      let increment = 0;
+      if (nextState.pendingOffersCount > (previous.pendingOffersCount || 0)) {
+        increment += nextState.pendingOffersCount - (previous.pendingOffersCount || 0);
+      } else if (
+        nextState.latestPendingOfferId > (previous.latestPendingOfferId || 0) &&
+        nextState.pendingOffersCount >= (previous.pendingOffersCount || 0)
+      ) {
+        increment += 1;
+      }
+      if (nextState.pendingAppointmentsCount > (previous.pendingAppointmentsCount || 0)) {
+        increment += nextState.pendingAppointmentsCount - (previous.pendingAppointmentsCount || 0);
+      }
+      if (nextState.unreadMessagesCount > (previous.unreadMessagesCount || 0)) {
+        increment += nextState.unreadMessagesCount - (previous.unreadMessagesCount || 0);
+      }
+      return increment;
+    }
+
+    function getCustomerIncrement(previous, nextState) {
+      if (!previous) return 0;
+      let increment = 0;
+      if (nextState.acceptedOffersCount > (previous.acceptedOffersCount || 0)) {
+        increment += nextState.acceptedOffersCount - (previous.acceptedOffersCount || 0);
+      }
+      if (nextState.pendingCustomerRequestsCount > (previous.pendingCustomerRequestsCount || 0)) {
+        increment += nextState.pendingCustomerRequestsCount - (previous.pendingCustomerRequestsCount || 0);
+      }
+      if (nextState.pendingCustomerAppointmentsCount > (previous.pendingCustomerAppointmentsCount || 0)) {
+        increment += nextState.pendingCustomerAppointmentsCount - (previous.pendingCustomerAppointmentsCount || 0);
+      }
+      if (nextState.confirmedAppointmentsCount > (previous.confirmedAppointmentsCount || 0)) {
+        increment += nextState.confirmedAppointmentsCount - (previous.confirmedAppointmentsCount || 0);
+      }
+      if (nextState.unreadMessagesCount > (previous.unreadMessagesCount || 0)) {
+        increment += nextState.unreadMessagesCount - (previous.unreadMessagesCount || 0);
+      }
+      if (nextState.matchedRequestsCount > (previous.matchedRequestsCount || 0)) {
+        increment += nextState.matchedRequestsCount - (previous.matchedRequestsCount || 0);
+      }
+      if (!increment && nextState.signature !== (previous.signature || "")) {
+        increment = 1;
+      }
+      return increment;
+    }
+
+    async function pollNavNotifications() {
+      if (document.hidden) return;
+      try {
+        const response = await fetch(snapshotUrl, {
+          method: "GET",
+          credentials: "same-origin",
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const payload = await response.json();
+        const previousSnapshot = readSnapshot();
+        const nextSnapshot = isProvider ? buildProviderSnapshot(payload) : buildCustomerSnapshot(payload);
+        const increment = isProvider
+          ? getProviderIncrement(previousSnapshot, nextSnapshot)
+          : getCustomerIncrement(previousSnapshot, nextSnapshot);
+        if (increment > 0) {
+          writeBadgeCount(readBadgeCount() + increment);
+        }
+        writeSnapshot(nextSnapshot);
+      } catch (error) {
+        void error;
+      }
+    }
+
+    renderNavBadge(readBadgeCount());
+    window.setInterval(pollNavNotifications, 10000);
+    pollNavNotifications();
   })();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>

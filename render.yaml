@@ -1,0 +1,50 @@
+services:
+  - type: web
+    name: ustabul-web
+    env: python
+    autoDeploy: true
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate
+    startCommand: gunicorn Companywebsite.wsgi:application --bind 0.0.0.0:$PORT
+    envVars:
+      - key: DJANGO_ENV
+        value: production
+      - key: DJANGO_DEBUG
+        value: "0"
+      - key: RENDER_EXTERNAL_HOSTNAME
+        fromService:
+          type: web
+          name: ustabul-web
+          property: host
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ustabul-db
+          property: connectionString
+      - key: USE_WHITENOISE
+        value: "1"
+
+  - type: worker
+    name: ustabul-lifecycle-worker
+    env: python
+    autoDeploy: true
+    buildCommand: pip install -r requirements.txt && python manage.py migrate
+    startCommand: python manage.py marketplace_lifecycle --loop --interval 30
+    envVars:
+      - key: DJANGO_ENV
+        value: production
+      - key: DJANGO_DEBUG
+        value: "0"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ustabul-db
+          property: connectionString
+      - key: USE_WHITENOISE
+        value: "1"
+      - key: LIFECYCLE_HEARTBEAT_STALE_SECONDS
+        value: "180"
+
+databases:
+  - name: ustabul-db
