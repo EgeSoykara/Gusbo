@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.db.models import Avg
 from django.utils import timezone
 
@@ -32,6 +33,8 @@ class Provider(models.Model):
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     rating = models.DecimalField(max_digits=2, decimal_places=1, default=5.0)
     is_available = models.BooleanField(default=True)
+    is_verified = models.BooleanField(default=False)
+    verified_at = models.DateTimeField(null=True, blank=True)
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -43,6 +46,13 @@ class Provider(models.Model):
 
     def service_types_display(self):
         return ", ".join(self.service_types.values_list("name", flat=True))
+
+    def save(self, *args, **kwargs):
+        if self.is_verified and self.verified_at is None:
+            self.verified_at = timezone.now()
+        if not self.is_verified and self.verified_at is not None:
+            self.verified_at = None
+        super().save(*args, **kwargs)
 
 
 class ServiceRequest(models.Model):
@@ -165,46 +175,6 @@ class ProviderOffer(models.Model):
         return f"Talep {self.service_request_id} -> {self.provider.full_name} ({self.status})"
 
 
-class ProviderWallet(models.Model):
-    provider = models.OneToOneField(Provider, on_delete=models.CASCADE, related_name="wallet")
-    balance = models.PositiveIntegerField(default=0)
-    updated_at = models.DateTimeField(auto_now=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"Cuzdan {self.provider.full_name}: {self.balance}"
-
-
-class CreditTransaction(models.Model):
-    TYPE_CHOICES = (
-        ("welcome", "Hos Geldin Kredisi"),
-        ("admin_load", "Admin Yukleme"),
-        ("package_purchase", "Paket Satin Alimi"),
-        ("quote_fee", "Teklif Kredisi"),
-        ("adjustment", "Duzeltme"),
-    )
-
-    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name="credit_transactions")
-    wallet = models.ForeignKey(ProviderWallet, on_delete=models.CASCADE, related_name="transactions")
-    transaction_type = models.CharField(max_length=30, choices=TYPE_CHOICES)
-    amount = models.IntegerField()
-    balance_after = models.PositiveIntegerField()
-    note = models.CharField(max_length=240, blank=True)
-    reference_offer = models.ForeignKey(
-        ProviderOffer,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="credit_transactions",
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["-created_at", "-id"]
-
-    def __str__(self):
-        sign = "+" if self.amount >= 0 else ""
-        return f"{self.provider.full_name} {sign}{self.amount} => {self.balance_after}"
 
 
 class CustomerProfile(models.Model):
@@ -216,6 +186,7 @@ class CustomerProfile(models.Model):
 
     def __str__(self):
         return self.user.username
+
 
 
 class ProviderRating(models.Model):
@@ -292,3 +263,188 @@ class ServiceMessage(models.Model):
 
     def __str__(self):
         return f"Mesaj #{self.id} Talep {self.service_request_id} ({self.sender_role})"
+
+
+class WorkflowEvent(models.Model):
+    TARGET_CHOICES = (
+        ("request", "Talep"),
+        ("appointment", "Randevu"),
+    )
+    ACTOR_ROLE_CHOICES = (
+        ("customer", "Müşteri"),
+        ("provider", "Usta"),
+        ("system", "Sistem"),
+    )
+    SOURCE_CHOICES = (
+        ("user", "Kullanıcı"),
+        ("scheduler", "Zamanlayıcı"),
+        ("system", "Sistem"),
+    )
+
+    target_type = models.CharField(max_length=20, choices=TARGET_CHOICES)
+    service_request = models.ForeignKey(
+        ServiceRequest,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="workflow_events",
+    )
+    appointment = models.ForeignKey(
+        ServiceAppointment,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="workflow_events",
+    )
+    from_status = models.CharField(max_length=30)
+    to_status = models.CharField(max_length=30)
+    actor_user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="workflow_events",
+    )
+    actor_role = models.CharField(max_length=20, choices=ACTOR_ROLE_CHOICES, default="system")
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default="system")
+    note = models.CharField(max_length=240, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.target_type} {self.from_status} -> {self.to_status}"
+
+
+class IdempotencyRecord(models.Model):
+    key = models.CharField(max_length=64, unique=True)
+    scope = models.CharField(max_length=80)
+    endpoint = models.CharField(max_length=200, blank=True)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="idempotency_records",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.scope} {self.created_at:%Y-%m-%d %H:%M:%S}"
+
+
+class SchedulerHeartbeat(models.Model):
+    worker_name = models.CharField(max_length=80, unique=True)
+    run_count = models.PositiveIntegerField(default=0)
+    last_started_at = models.DateTimeField(null=True, blank=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    last_error_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.CharField(max_length=240, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["worker_name"]
+
+    def __str__(self):
+        return f"{self.worker_name} ({self.run_count})"
+
+
+class SchedulerLock(models.Model):
+    worker_name = models.CharField(max_length=80, unique=True)
+    lock_owner = models.CharField(max_length=64, blank=True)
+    locked_until = models.DateTimeField(null=True, blank=True)
+    last_acquired_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["worker_name"]
+
+    def __str__(self):
+        return f"{self.worker_name} lock"
+
+
+class ProviderAvailabilitySlot(models.Model):
+    WEEKDAY_CHOICES = (
+        (0, "Pazartesi"),
+        (1, "Sali"),
+        (2, "Carsamba"),
+        (3, "Persembe"),
+        (4, "Cuma"),
+        (5, "Cumartesi"),
+        (6, "Pazar"),
+    )
+
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name="availability_slots")
+    weekday = models.PositiveSmallIntegerField(choices=WEEKDAY_CHOICES)
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["provider_id", "weekday", "start_time"]
+        unique_together = ("provider", "weekday", "start_time", "end_time")
+
+    def __str__(self):
+        return f"{self.provider.full_name} {self.get_weekday_display()} {self.start_time}-{self.end_time}"
+
+    def clean(self):
+        if self.end_time <= self.start_time:
+            raise ValidationError("Bitis saati baslangic saatinden sonra olmalidir.")
+
+
+class EscrowPayment(models.Model):
+    STATUS_CHOICES = (
+        ("awaiting_funding", "Fon Bekliyor"),
+        ("funded", "Fonlandi"),
+        ("released", "Ustaya Aktarildi"),
+        ("refunded", "Musteriye Iade"),
+    )
+
+    service_request = models.OneToOneField(
+        ServiceRequest,
+        on_delete=models.CASCADE,
+        related_name="escrow_payment",
+    )
+    customer = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="escrow_payments",
+    )
+    provider = models.ForeignKey(
+        Provider,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="escrow_payments",
+    )
+    agreed_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    funded_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    status = models.CharField(max_length=24, choices=STATUS_CHOICES, default="awaiting_funding")
+    funded_at = models.DateTimeField(null=True, blank=True)
+    released_at = models.DateTimeField(null=True, blank=True)
+    refunded_at = models.DateTimeField(null=True, blank=True)
+    note = models.CharField(max_length=240, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-id"]
+
+    def __str__(self):
+        return f"Emanet Talep {self.service_request_id} ({self.status})"
+
+    def clean(self):
+        if self.agreed_amount <= 0:
+            raise ValidationError("Anlasilan tutar sifirdan buyuk olmalidir.")
+        if self.funded_amount < 0:
+            raise ValidationError("Fonlanan tutar negatif olamaz.")
+
+

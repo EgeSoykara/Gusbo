@@ -97,12 +97,31 @@
 
     <div class="card panel-card shadow-sm mt-4 reveal-up delay-2">
       <div class="card-body">
-        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
           <h2 class="h5 mb-0 section-title"><i class="bi bi-person-workspace me-2"></i>Müsait Ustalar</h2>
-          {% if location_used %}
-            <span class="result-badge"><i class="bi bi-compass-fill me-1"></i>Mesafeye Göre Sıralandı</span>
-          {% endif %}
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            {% if location_used %}
+              <span class="result-badge"><i class="bi bi-compass-fill me-1"></i>Mesafeye Göre Sıralandı</span>
+            {% endif %}
+            <form method="get" class="provider-page-size-form">
+              {% for key, value in request.GET.items %}
+                {% if key != "provider_page" and key != "provider_page_size" %}
+                  <input type="hidden" name="{{ key }}" value="{{ value }}">
+                {% endif %}
+              {% endfor %}
+              <label for="provider-page-size" class="small text-muted me-1">Sayfa boyutu</label>
+              <select id="provider-page-size" name="provider_page_size" onchange="this.form.submit()">
+                {% for size_option in provider_page_size_options %}
+                  <option value="{{ size_option }}" {% if size_option == provider_page_size %}selected{% endif %}>{{ size_option }}</option>
+                {% endfor %}
+              </select>
+            </form>
+          </div>
         </div>
+        <p class="small text-muted mb-3">
+          Toplam {{ provider_total_count }} usta bulundu.
+          Sayfa {{ provider_page_obj.number }} / {{ provider_page_obj.paginator.num_pages }}.
+        </p>
         {% if providers %}
           <div class="row g-3 provider-grid">
             {% for provider in providers %}
@@ -111,7 +130,9 @@
                   <div class="d-flex align-items-start justify-content-between mb-3">
                     <div class="provider-head">
                       <span class="avatar-dot">{{ provider.full_name|slice:":1"|upper }}</span>
-                      <h3 class="h6 mb-0">{{ provider.full_name }}</h3>
+                      <div>
+                        <h3 class="h6 mb-0">{{ provider.full_name }}</h3>
+                      </div>
                     </div>
                     <span class="pill">
                       {% for service in provider.service_types.all %}
@@ -136,13 +157,39 @@
                     <p class="small mb-0 provider-phone"><i class="bi bi-telephone-fill me-1"></i><strong>{{ provider.phone }}</strong></p>
                     <div class="provider-actions">
                       <a href="{% url 'provider_detail' provider.id %}" class="btn btn-sm provider-profile-btn">Profili Gör</a>
-                      <a href="tel:{{ provider.phone }}" class="btn btn-sm provider-call-btn">Ara</a>
+                      <a href="tel:{{ provider.phone }}" class="btn btn-sm provider-call-btn" data-provider-call data-phone="{{ provider.phone }}">Ara</a>
+                      <a href="#" class="btn btn-sm provider-whatsapp-btn" data-provider-whatsapp data-phone="{{ provider.phone }}" target="_blank" rel="noopener noreferrer">WhatsApp</a>
                     </div>
                   </div>
+                  <p class="small text-muted provider-contact-help mb-0" data-provider-help hidden>
+                    Masaüstünde arama açılmazsa WhatsApp'ı kullanın.
+                  </p>
                 </article>
               </div>
             {% endfor %}
           </div>
+          {% if provider_page_obj.has_other_pages %}
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+              <span class="small text-muted">Sayfa {{ provider_page_obj.number }} / {{ provider_page_obj.paginator.num_pages }}</span>
+              <nav aria-label="Usta listesi sayfalama">
+                <ul class="pagination pagination-sm mb-0">
+                  <li class="page-item {% if not provider_page_obj.has_previous %}disabled{% endif %}">
+                    <a class="page-link" href="{{ provider_page_query }}{% if provider_page_query %}&{% endif %}provider_page=1" aria-label="İlk">&laquo;&laquo;</a>
+                  </li>
+                  <li class="page-item {% if not provider_page_obj.has_previous %}disabled{% endif %}">
+                    <a class="page-link" href="{{ provider_page_query }}{% if provider_page_query %}&{% endif %}provider_page={% if provider_page_obj.has_previous %}{{ provider_page_obj.previous_page_number }}{% else %}1{% endif %}" aria-label="Önceki">&laquo;</a>
+                  </li>
+                  <li class="page-item disabled"><span class="page-link">{{ provider_page_obj.number }}</span></li>
+                  <li class="page-item {% if not provider_page_obj.has_next %}disabled{% endif %}">
+                    <a class="page-link" href="{{ provider_page_query }}{% if provider_page_query %}&{% endif %}provider_page={% if provider_page_obj.has_next %}{{ provider_page_obj.next_page_number }}{% else %}{{ provider_page_obj.paginator.num_pages }}{% endif %}" aria-label="Sonraki">&raquo;</a>
+                  </li>
+                  <li class="page-item {% if not provider_page_obj.has_next %}disabled{% endif %}">
+                    <a class="page-link" href="{{ provider_page_query }}{% if provider_page_query %}&{% endif %}provider_page={{ provider_page_obj.paginator.num_pages }}" aria-label="Son">&raquo;&raquo;</a>
+                  </li>
+                </ul>
+              </nav>
+            </div>
+          {% endif %}
         {% else %}
           <p class="mb-0">Kriterlere uygun usta bulunamadı.</p>
         {% endif %}
@@ -432,6 +479,52 @@
         }
       );
     });
+  })();
+</script>
+<script>
+  (function () {
+    const callButtons = document.querySelectorAll("[data-provider-call]");
+    const whatsappButtons = document.querySelectorAll("[data-provider-whatsapp]");
+    if (!callButtons.length && !whatsappButtons.length) return;
+
+    function normalizeDigits(phone) {
+      return String(phone || "").replace(/\D+/g, "");
+    }
+
+    function toWhatsappPhone(phone) {
+      const digits = normalizeDigits(phone);
+      if (!digits) return "";
+      if (digits.startsWith("90")) return digits;
+      if (digits.startsWith("0") && digits.length === 11) return "90" + digits.slice(1);
+      return digits;
+    }
+
+    const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+
+    whatsappButtons.forEach(function (button) {
+      const whatsappPhone = toWhatsappPhone(button.dataset.phone || "");
+      if (!whatsappPhone) {
+        button.classList.add("disabled");
+        button.setAttribute("aria-disabled", "true");
+        button.removeAttribute("href");
+        return;
+      }
+      button.href = "https://wa.me/" + whatsappPhone;
+    });
+
+    callButtons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        if (isMobile) return;
+        const card = button.closest(".provider-card");
+        const help = card ? card.querySelector("[data-provider-help]") : null;
+        if (!help) return;
+        help.hidden = false;
+        window.setTimeout(function () {
+          help.hidden = true;
+        }, 2400);
+      });
+    });
+
   })();
 </script>
 {% endblock %}

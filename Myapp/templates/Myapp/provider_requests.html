@@ -5,25 +5,27 @@
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
       <h1 class="h4 mb-0"><i class="bi bi-briefcase-fill me-2"></i>Usta Paneli</h1>
       <div class="d-flex align-items-center gap-2 flex-wrap">
-        <span class="status-pill status-pending_customer">Kredi: {{ wallet.balance }}</span>
-        <span class="small text-muted">{{ provider.full_name }} - {{ provider.city }}/{{ provider.district }}</span>
+        <span class="small text-muted">
+          {{ provider.full_name }} - {{ provider.city }}/{{ provider.district }}
+          {% if provider.is_verified %}
+            <span class="provider-verify-badge ms-1"><i class="bi bi-patch-check-fill me-1"></i>Dogrulanmis</span>
+          {% endif %}
+        </span>
         <a href="{% url 'agreement_history' %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-journal-check me-1"></i>Anlaşmalar</a>
-        <a href="{% url 'provider_packages' %}" class="btn btn-sm btn-main"><i class="bi bi-wallet2 me-1"></i>Paketler</a>
         <a href="{% url 'provider_profile' %}" class="btn btn-sm nav-ghost-btn"><i class="bi bi-person-vcard me-1"></i>Profili Düzenle</a>
       </div>
     </div>
-    <p class="mb-0 text-muted">Yeni talepler burada sıralı gelir. Teklif gönderiminde {{ quote_credit_cost }} kredi düşer.</p>
+    <p class="mb-0 text-muted">Yeni talepler burada sıralı gelir.</p>
   </div>
 </section>
 
 <div
   id="provider-live-sync"
   data-snapshot-url="{% url 'provider_panel_snapshot' %}"
-  data-wallet-balance="{{ wallet.balance }}"
   data-pending-offers-count="{{ pending_offers|length }}"
   data-latest-pending-offer-id="{% if pending_offers %}{{ pending_offers.0.id }}{% else %}0{% endif %}"
   data-pending-appointments-count="{{ pending_appointments|length }}"
-  data-waiting-customer-appointments-count="{{ waiting_customer_appointments|length }}"
+  data-unread-messages-count="{{ total_unread_messages }}"
 ></div>
 
 <section class="card panel-card shadow-sm reveal-up mb-4">
@@ -180,46 +182,6 @@
 
 <section class="card panel-card shadow-sm reveal-up mb-4">
   <div class="card-body p-4">
-    <h2 class="h5 mb-3"><i class="bi bi-hourglass-split me-2"></i>Müşteri Onayı Bekleyen Randevular</h2>
-    {% if waiting_customer_appointments %}
-      <div class="table-responsive">
-        <table class="table request-table align-middle mb-0">
-          <thead>
-            <tr>
-              <th>Talep No</th>
-              <th>Hizmet</th>
-              <th>Müşteri</th>
-              <th>Randevu Saati</th>
-              <th>Durum</th>
-              <th>Not</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for appointment in waiting_customer_appointments %}
-              <tr>
-                <td>#{{ appointment.service_request.id }}</td>
-                <td>{{ appointment.service_request.service_type.name }}</td>
-                <td>{{ appointment.service_request.customer_name }}</td>
-                <td>{{ appointment.scheduled_for|date:"d.m.Y H:i" }}</td>
-                <td>
-                  <span class="status-pill appointment-status appointment-{{ appointment.status }}">
-                    {{ appointment.get_status_display }}
-                  </span>
-                </td>
-                <td>{{ appointment.provider_note|default:appointment.customer_note|default:"-"|truncatechars:80 }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <p class="mb-0 text-muted">Müşteri onayı bekleyen randevu yok.</p>
-    {% endif %}
-  </div>
-</section>
-
-<section class="card panel-card shadow-sm reveal-up mb-4">
-  <div class="card-body p-4">
     <h2 class="h5 mb-3"><i class="bi bi-calendar-check-fill me-2"></i>Onaylı Randevular</h2>
     {% if confirmed_appointments %}
       <div class="table-responsive">
@@ -247,11 +209,26 @@
                   </span>
                 </td>
                 <td>
-                  <form method="post" action="{% url 'provider_complete_appointment' appointment.id %}">
+                  <form
+                    method="post"
+                    action="{% url 'provider_complete_appointment' appointment.id %}"
+                    data-complete-confirm-form
+                  >
                     {% csrf_token %}
-                    <button type="submit" class="btn btn-sm request-complete-btn">
+                    <button type="button" class="btn btn-sm request-complete-btn" data-complete-open>
                       <i class="bi bi-clipboard2-check me-1"></i>Tamamlandı İşaretle
                     </button>
+                    <div class="request-complete-inline-confirm d-none" data-complete-confirm-box>
+                      <div class="request-complete-inline-text">Bu randevuyu tamamlandı olarak işaretlemeyi onaylıyor musunuz</div>
+                      <div class="request-complete-inline-actions">
+                        <button type="submit" class="btn btn-sm request-complete-confirm-btn">
+                          <i class="bi bi-check2-circle me-1"></i>Evet, Onayla
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-complete-cancel>
+                          Vazgeç
+                        </button>
+                      </div>
+                    </div>
                   </form>
                 </td>
               </tr>
@@ -299,6 +276,28 @@
           </tbody>
         </table>
       </div>
+      {% if recent_offers_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">
+            Sayfa {{ recent_offers_page_obj.number }} / {{ recent_offers_page_obj.paginator.num_pages }}
+          </span>
+          <nav aria-label="Son yanıtlarım sayfalama">
+            <ul class="pagination pagination-sm mb-0">
+              <li class="page-item {% if not recent_offers_page_obj.has_previous %}disabled{% endif %}">
+                <a class="page-link" href="?recent_offer_page={% if recent_offers_page_obj.has_previous %}{{ recent_offers_page_obj.previous_page_number }}{% else %}1{% endif %}&recent_appointment_page={{ recent_appointments_page_obj.number }}" aria-label="Önceki">
+                  <span aria-hidden="true">&laquo;</span>
+                </a>
+              </li>
+              <li class="page-item disabled"><span class="page-link">{{ recent_offers_page_obj.number }}</span></li>
+              <li class="page-item {% if not recent_offers_page_obj.has_next %}disabled{% endif %}">
+                <a class="page-link" href="?recent_offer_page={% if recent_offers_page_obj.has_next %}{{ recent_offers_page_obj.next_page_number }}{% else %}{{ recent_offers_page_obj.paginator.num_pages }}{% endif %}&recent_appointment_page={{ recent_appointments_page_obj.number }}" aria-label="Sonraki">
+                  <span aria-hidden="true">&raquo;</span>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
     {% else %}
       <p class="mb-0 text-muted">Henüz cevaplanan teklif yok.</p>
     {% endif %}
@@ -337,11 +336,78 @@
           </tbody>
         </table>
       </div>
+      {% if recent_appointments_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">
+            Sayfa {{ recent_appointments_page_obj.number }} / {{ recent_appointments_page_obj.paginator.num_pages }}
+          </span>
+          <nav aria-label="Randevu geçmişi sayfalama">
+            <ul class="pagination pagination-sm mb-0">
+              <li class="page-item {% if not recent_appointments_page_obj.has_previous %}disabled{% endif %}">
+                <a class="page-link" href="?recent_offer_page={{ recent_offers_page_obj.number }}&recent_appointment_page={% if recent_appointments_page_obj.has_previous %}{{ recent_appointments_page_obj.previous_page_number }}{% else %}1{% endif %}" aria-label="Önceki">
+                  <span aria-hidden="true">&laquo;</span>
+                </a>
+              </li>
+              <li class="page-item disabled"><span class="page-link">{{ recent_appointments_page_obj.number }}</span></li>
+              <li class="page-item {% if not recent_appointments_page_obj.has_next %}disabled{% endif %}">
+                <a class="page-link" href="?recent_offer_page={{ recent_offers_page_obj.number }}&recent_appointment_page={% if recent_appointments_page_obj.has_next %}{{ recent_appointments_page_obj.next_page_number }}{% else %}{{ recent_appointments_page_obj.paginator.num_pages }}{% endif %}" aria-label="Sonraki">
+                  <span aria-hidden="true">&raquo;</span>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
     {% else %}
       <p class="mb-0 text-muted">Randevu geçmişi henüz oluşmadı.</p>
     {% endif %}
   </div>
 </section>
+<script>
+  (function () {
+    const confirmForms = document.querySelectorAll("form[data-complete-confirm-form]");
+    if (!confirmForms.length) return;
+
+    function closeFormConfirmation(form) {
+      const openButton = form.querySelector("[data-complete-open]");
+      const confirmBox = form.querySelector("[data-complete-confirm-box]");
+      if (!openButton || !confirmBox) return;
+      confirmBox.classList.add("d-none");
+      openButton.classList.remove("d-none");
+    }
+
+    function closeAllExcept(excludedForm) {
+      confirmForms.forEach(function (form) {
+        if (form === excludedForm) return;
+        closeFormConfirmation(form);
+      });
+    }
+
+    confirmForms.forEach(function (form) {
+      const openButton = form.querySelector("[data-complete-open]");
+      const confirmBox = form.querySelector("[data-complete-confirm-box]");
+      const cancelButton = form.querySelector("[data-complete-cancel]");
+      if (!openButton || !confirmBox) return;
+
+      openButton.addEventListener("click", function () {
+        closeAllExcept(form);
+        confirmBox.classList.remove("d-none");
+        openButton.classList.add("d-none");
+      });
+
+      if (cancelButton) {
+        cancelButton.addEventListener("click", function () {
+          closeFormConfirmation(form);
+        });
+      }
+    });
+
+    document.addEventListener("click", function (event) {
+      if (event.target.closest("[data-complete-confirm-form]")) return;
+      closeAllExcept(null);
+    });
+  })();
+</script>
 <script>
   (function () {
     const syncRoot = document.getElementById("provider-live-sync");
@@ -350,16 +416,117 @@
     const snapshotUrl = syncRoot.dataset.snapshotUrl;
     if (!snapshotUrl) return;
 
+    const defaultTitle = document.title;
+    let titleFlashTimer = null;
+    let titleFlashOn = false;
+    let reloadTimer = null;
+    const badgeCountKey = "ustabul_provider_unseen_count";
+    const snapshotKey = "ustabul_provider_last_snapshot";
+
     let baseline = {
-      walletBalance: Number(syncRoot.dataset.walletBalance || 0),
       pendingOffersCount: Number(syncRoot.dataset.pendingOffersCount || 0),
       latestPendingOfferId: Number(syncRoot.dataset.latestPendingOfferId || 0),
       pendingAppointmentsCount: Number(syncRoot.dataset.pendingAppointmentsCount || 0),
-      waitingCustomerAppointmentsCount: Number(syncRoot.dataset.waitingCustomerAppointmentsCount || 0),
+      unreadMessagesCount: Number(syncRoot.dataset.unreadMessagesCount || 0),
     };
 
+    function renderNavBadge(selector, count) {
+      const targets = document.querySelectorAll(selector);
+      if (!targets.length) return;
+      targets.forEach(function (target) {
+        let badge = target.querySelector(".nav-live-badge");
+        if (!count) {
+          if (badge) badge.remove();
+          return;
+        }
+        if (!badge) {
+          badge = document.createElement("span");
+          badge.className = "nav-live-badge";
+          target.appendChild(badge);
+        }
+        badge.textContent = count > 99 ? "99+" : String(count);
+      });
+    }
+
+    function buildProviderSnapshot(state) {
+      return {
+        pendingOffersCount: Number(state.pendingOffersCount || 0),
+        latestPendingOfferId: Number(state.latestPendingOfferId || 0),
+        pendingAppointmentsCount: Number(state.pendingAppointmentsCount || 0),
+        unreadMessagesCount: Number(state.unreadMessagesCount || 0),
+      };
+    }
+
+    function markProviderNotificationsSeen(state) {
+      const snapshot = buildProviderSnapshot(state);
+      try {
+        localStorage.setItem(badgeCountKey, "0");
+        localStorage.setItem(snapshotKey, JSON.stringify(snapshot));
+      } catch (error) {
+        void error;
+      }
+      renderNavBadge("[data-live-provider-nav]", 0);
+    }
+
+    function stopTitleFlash() {
+      if (!titleFlashTimer) return;
+      window.clearInterval(titleFlashTimer);
+      titleFlashTimer = null;
+      titleFlashOn = false;
+      document.title = defaultTitle;
+    }
+
+    function flashTitle(message) {
+      if (!document.hidden) return;
+      stopTitleFlash();
+      titleFlashTimer = window.setInterval(function () {
+        titleFlashOn = !titleFlashOn;
+        document.title = titleFlashOn ? "* " + message : defaultTitle;
+      }, 900);
+      window.setTimeout(stopTitleFlash, 10000);
+    }
+
+    function showInlineNotice(message) {
+      let toast = document.getElementById("provider-live-notice");
+      if (!toast) {
+        toast = document.createElement("div");
+        toast.id = "provider-live-notice";
+        toast.className = "live-sync-toast";
+        document.body.appendChild(toast);
+      }
+      toast.innerHTML = '<i class="bi bi-bell-fill"></i><span>' + message + "</span>";
+      toast.classList.add("show");
+      window.setTimeout(function () {
+        toast.classList.remove("show");
+      }, 2600);
+    }
+
+    function triggerLiveAlert(message) {
+      if (!message) return;
+      showInlineNotice(message);
+      document.body.classList.add("live-sync-attention");
+      window.setTimeout(function () {
+        document.body.classList.remove("live-sync-attention");
+      }, 1500);
+      flashTitle(message);
+    }
+
+    function scheduleReload(delayMs) {
+      if (reloadTimer) return;
+      reloadTimer = window.setTimeout(function () {
+        window.location.reload();
+      }, delayMs);
+    }
+
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) {
+        stopTitleFlash();
+      }
+    });
+
+    markProviderNotificationsSeen(baseline);
+
     async function pollProviderPanel() {
-      if (document.hidden) return;
       try {
         const response = await fetch(snapshotUrl, {
           method: "GET",
@@ -370,22 +537,34 @@
         if (!response.ok) return;
         const payload = await response.json();
         const nextState = {
-          walletBalance: Number(payload.wallet_balance || 0),
           pendingOffersCount: Number(payload.pending_offers_count || 0),
           latestPendingOfferId: Number(payload.latest_pending_offer_id || 0),
           pendingAppointmentsCount: Number(payload.pending_appointments_count || 0),
-          waitingCustomerAppointmentsCount: Number(payload.waiting_customer_appointments_count || 0),
+          unreadMessagesCount: Number(payload.unread_messages_count || 0),
         };
-
         const hasChanges =
-          nextState.walletBalance !== baseline.walletBalance ||
           nextState.pendingOffersCount !== baseline.pendingOffersCount ||
           nextState.latestPendingOfferId !== baseline.latestPendingOfferId ||
           nextState.pendingAppointmentsCount !== baseline.pendingAppointmentsCount ||
-          nextState.waitingCustomerAppointmentsCount !== baseline.waitingCustomerAppointmentsCount;
+          nextState.unreadMessagesCount !== baseline.unreadMessagesCount;
 
         if (hasChanges) {
-          window.location.reload();
+          let message = "Usta panelinde yeni bildirim var.";
+          if (
+            nextState.pendingOffersCount > baseline.pendingOffersCount ||
+            (nextState.latestPendingOfferId > baseline.latestPendingOfferId && nextState.pendingOffersCount > 0)
+          ) {
+            message = "Yeni bir iş talebi geldi.";
+          } else if (nextState.pendingAppointmentsCount > baseline.pendingAppointmentsCount) {
+            message = "Yeni bir randevu talebi geldi.";
+          } else if (nextState.unreadMessagesCount > baseline.unreadMessagesCount) {
+            message = "Yeni bir mesajınız var.";
+          }
+
+          baseline = nextState;
+          markProviderNotificationsSeen(nextState);
+          triggerLiveAlert(message);
+          scheduleReload(1500);
         }
       } catch (error) {
         void error;
@@ -396,3 +575,9 @@
   })();
 </script>
 {% endblock %}
+
+
+
+
+
+

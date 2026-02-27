@@ -1,26 +1,39 @@
-﻿from datetime import timedelta
+from datetime import time, timedelta
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
+from django.core.management import call_command
+from django.core.cache import cache
 from django.urls import reverse
 from django.contrib.auth.models import User
 from django.utils import timezone
+from io import StringIO
 
 from .models import (
-    CreditTransaction,
     CustomerProfile,
+    EscrowPayment,
+    IdempotencyRecord,
     Provider,
-    ProviderWallet,
+    ProviderAvailabilitySlot,
     ProviderOffer,
     ProviderRating,
+    SchedulerHeartbeat,
+    SchedulerLock,
     ServiceAppointment,
     ServiceMessage,
     ServiceRequest,
     ServiceType,
+    WorkflowEvent,
+)
+from .views import (
+    refresh_offer_lifecycle,
+    transition_appointment_status,
+    transition_service_request_status,
 )
 
 
 class MarketplaceTests(TestCase):
     def setUp(self):
+        cache.clear()
         self.service = ServiceType.objects.create(name="Tesisat", slug="tesisat")
         self.provider_user_ali = User.objects.create_user(username="aliusta", password="GucluSifre123!")
         self.provider_ali = Provider.objects.create(
@@ -32,6 +45,7 @@ class MarketplaceTests(TestCase):
             latitude=41.015000,
             longitude=29.020000,
             rating=4.8,
+            is_verified=True,
             is_available=True,
         )
         self.provider_ali.service_types.add(self.service)
@@ -45,6 +59,7 @@ class MarketplaceTests(TestCase):
             latitude=40.980000,
             longitude=29.300000,
             rating=4.9,
+            is_verified=True,
             is_available=True,
         )
         self.provider_mehmet.service_types.add(self.service)
@@ -56,6 +71,7 @@ class MarketplaceTests(TestCase):
             district="Ortakoy",
             phone="05559998877",
             rating=4.0,
+            is_verified=True,
             is_available=True,
         )
         self.provider_hasan.service_types.add(self.service)
@@ -82,8 +98,35 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Talep oluÅŸturmak iÃ§in giriÅŸ yapmalÄ±sÄ±nÄ±z.")
+        self.assertContains(response, "Talep oluşturmak için giriş yapmalısınız.")
         self.assertFalse(ServiceRequest.objects.exists())
+
+    @override_settings(ACTION_RATE_LIMIT_MAX_ATTEMPTS=1, ACTION_RATE_LIMIT_WINDOW_SECONDS=120)
+    def test_create_request_rate_limit_blocks_second_submission(self):
+        customer = User.objects.create_user(username="ratelimitmusteri", password="GucluSifre123!")
+        self.client.login(username="ratelimitmusteri", password="GucluSifre123!")
+
+        first_payload = {
+            "customer_name": "Rate Limit Musteri",
+            "customer_phone": "05000000000",
+            "service_type": self.service.id,
+            "city": "Lefkosa",
+            "district": "Ortakoy",
+            "details": "Ilk talep",
+        }
+        second_payload = {
+            "customer_name": "Rate Limit Musteri",
+            "customer_phone": "05000000000",
+            "service_type": self.service.id,
+            "city": "Lefkosa",
+            "district": "Ortakoy",
+            "details": "Ikinci talep",
+        }
+        self.client.post(reverse("create_request"), data=first_payload, follow=True)
+        response = self.client.post(reverse("create_request"), data=second_payload, follow=True)
+
+        self.assertContains(response, "Çok kısa sürede çok fazla istek gönderdiniz")
+        self.assertEqual(ServiceRequest.objects.filter(customer=customer).count(), 1)
 
     def test_service_request_creates_record(self):
         customer = User.objects.create_user(username="talepmusteri", password="GucluSifre123!")
@@ -101,7 +144,7 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "ustaya teklif vermesi iÃ§in iletildi")
+        self.assertContains(response, "ustaya teklif vermesi için iletildi")
         latest = ServiceRequest.objects.latest("created_at")
         self.assertEqual(latest.customer, customer)
         self.assertEqual(latest.status, "pending_provider")
@@ -135,6 +178,11 @@ class MarketplaceTests(TestCase):
         providers = response.context["providers"]
         self.assertGreaterEqual(len(providers), 2)
         self.assertEqual(providers[0].full_name, "Ali Usta")
+
+    def test_index_provider_cards_do_not_render_verified_badge(self):
+        response = self.client.get(reverse("index"))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "provider-verify-badge")
 
     def test_search_with_any_district_does_not_filter_out_city_results(self):
         response = self.client.get(
@@ -270,7 +318,45 @@ class MarketplaceTests(TestCase):
         provider = Provider.objects.get(user__username="yeniprofesyonel")
         self.assertEqual(provider.full_name, "Yeni Usta")
         self.assertTrue(provider.service_types.filter(id=self.service.id).exists())
-        self.assertEqual(self.client.session.get("role"), "provider")
+        self.assertFalse(provider.is_verified)
+        self.assertNotEqual(self.client.session.get("role"), "provider")
+
+    def test_unverified_provider_cannot_login_until_admin_approval(self):
+        pending_user = User.objects.create_user(username="bekleyenusta", password="GucluSifre123!")
+        Provider.objects.create(
+            user=pending_user,
+            full_name="Bekleyen Usta",
+            city="Lefkosa",
+            district="Ortakoy",
+            phone="05558889900",
+            is_verified=False,
+            is_available=True,
+        )
+
+        response = self.client.post(
+            reverse("provider_login"),
+            data={"username": "bekleyenusta", "password": "GucluSifre123!"},
+            follow=True,
+        )
+        self.assertContains(response, "admin onayı bekliyor")
+
+    def test_unverified_provider_pending_warning_is_not_duplicated(self):
+        pending_user = User.objects.create_user(username="bekleyenustapanel", password="GucluSifre123!")
+        Provider.objects.create(
+            user=pending_user,
+            full_name="Bekleyen Usta Panel",
+            city="Lefkosa",
+            district="Ortakoy",
+            phone="05558889901",
+            is_verified=False,
+            is_available=True,
+        )
+
+        self.client.login(username="bekleyenustapanel", password="GucluSifre123!")
+        response = self.client.get(reverse("provider_requests"), follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Usta hesabınız admin onayı bekliyor.", count=1)
 
     def test_provider_can_update_profile(self):
         extra_service = ServiceType.objects.create(name="Elektrik", slug="elektrik")
@@ -370,7 +456,7 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
 
-        self.assertContains(response, "yorumunuz gÃ¼ncellendi")
+        self.assertContains(response, "yorumunuz güncellendi")
         rating = ProviderRating.objects.get(service_request=service_request)
         self.assertEqual(rating.score, 1)
         self.assertEqual(rating.comment, "Ikinci oy denemesi")
@@ -453,7 +539,61 @@ class MarketplaceTests(TestCase):
         self.assertEqual(appointment.provider, self.provider_ali)
         self.assertEqual(appointment.customer, user)
 
-    def test_provider_can_confirm_appointment(self):
+    def test_customer_can_create_appointment_with_quick_preset(self):
+        user = User.objects.create_user(username="hizlirandevu", password="GucluSifre123!")
+        self.client.login(username="hizlirandevu", password="GucluSifre123!")
+        service_request = ServiceRequest.objects.create(
+            customer_name="Hizli Randevu Musteri",
+            customer_phone="05005550111",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Hizli randevu secimi testi",
+            matched_provider=self.provider_ali,
+            customer=user,
+            status="matched",
+        )
+
+        self.client.post(
+            reverse("create_appointment", args=[service_request.id]),
+            data={
+                "appointment_preset": "1h",
+                "customer_note": "Hizli secim ile olusturuldu.",
+            },
+            follow=True,
+        )
+
+        appointment = ServiceAppointment.objects.get(service_request=service_request)
+        minutes_to_appointment = (appointment.scheduled_for - timezone.now()).total_seconds() / 60
+        self.assertEqual(appointment.status, "pending")
+        self.assertGreaterEqual(minutes_to_appointment, 50)
+        self.assertLessEqual(minutes_to_appointment, 70)
+
+    def test_customer_create_appointment_requires_time_or_preset(self):
+        user = User.objects.create_user(username="zamansizrandevu", password="GucluSifre123!")
+        self.client.login(username="zamansizrandevu", password="GucluSifre123!")
+        service_request = ServiceRequest.objects.create(
+            customer_name="Zamansiz Randevu Musteri",
+            customer_phone="05005550222",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Randevu zaman zorunlulugu testi",
+            matched_provider=self.provider_ali,
+            customer=user,
+            status="matched",
+        )
+
+        response = self.client.post(
+            reverse("create_appointment", args=[service_request.id]),
+            data={"customer_note": "Saat secmeden deneme"},
+            follow=True,
+        )
+
+        self.assertContains(response, "Randevu zamani secmelisiniz.")
+        self.assertFalse(ServiceAppointment.objects.filter(service_request=service_request).exists())
+
+    def test_provider_can_confirm_appointment_without_customer_reconfirm(self):
         customer = User.objects.create_user(username="randevumusteri", password="GucluSifre123!")
         appointment_request = ServiceRequest.objects.create(
             customer_name="Randevu Musteri",
@@ -482,8 +622,84 @@ class MarketplaceTests(TestCase):
         )
 
         appointment.refresh_from_db()
-        self.assertEqual(appointment.status, "pending_customer")
+        self.assertEqual(appointment.status, "confirmed")
         self.assertEqual(appointment.provider_note, "Saat uygundur.")
+
+    @override_settings(APPOINTMENT_PROVIDER_CONFIRM_MINUTES=5)
+    def test_pending_appointment_auto_cancels_after_provider_timeout(self):
+        customer = User.objects.create_user(username="sureasimiusta", password="GucluSifre123!")
+        appointment_request = ServiceRequest.objects.create(
+            customer_name="Sure Asimi Musteri",
+            customer_phone="05001119998",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Usta onay timeout testi",
+            matched_provider=self.provider_ali,
+            customer=customer,
+            status="matched",
+        )
+        appointment = ServiceAppointment.objects.create(
+            service_request=appointment_request,
+            customer=customer,
+            provider=self.provider_ali,
+            scheduled_for=timezone.now() + timedelta(days=1),
+            status="pending",
+        )
+        stale_time = timezone.now() - timedelta(minutes=20)
+        ServiceAppointment.objects.filter(id=appointment.id).update(created_at=stale_time, updated_at=stale_time)
+
+        self.client.login(username="sureasimiusta", password="GucluSifre123!")
+        self.client.get(reverse("provider_requests"))
+
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, "cancelled")
+
+    def test_refresh_offer_lifecycle_detaches_unverified_matched_provider(self):
+        customer = User.objects.create_user(username="eslesmebozulur", password="GucluSifre123!")
+        unverified_user = User.objects.create_user(username="eslesmeonaysiz", password="GucluSifre123!")
+        unverified_provider = Provider.objects.create(
+            user=unverified_user,
+            full_name="Eslesme Onaysiz Usta",
+            city="Lefkosa",
+            district="Ortakoy",
+            phone="05550000002",
+            is_verified=False,
+            is_available=True,
+        )
+        unverified_provider.service_types.set([self.service])
+
+        service_request = ServiceRequest.objects.create(
+            customer_name="Eslesme Musteri",
+            customer_phone="05001110000",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Onaysiz eslesme testi",
+            matched_provider=unverified_provider,
+            customer=customer,
+            status="matched",
+        )
+        blocked_offer = ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=unverified_provider,
+            token="DETACH1111",
+            sequence=1,
+            status="accepted",
+            quote_amount=1000,
+        )
+        service_request.matched_offer = blocked_offer
+        service_request.matched_at = timezone.now()
+        service_request.save(update_fields=["matched_offer", "matched_at"])
+
+        refresh_offer_lifecycle()
+
+        service_request.refresh_from_db()
+        blocked_offer.refresh_from_db()
+        self.assertIsNone(service_request.matched_provider)
+        self.assertIsNone(service_request.matched_offer)
+        self.assertIn(service_request.status, {"new", "pending_provider", "pending_customer"})
+        self.assertEqual(blocked_offer.status, "expired")
 
     def test_customer_can_confirm_provider_approved_appointment(self):
         customer = User.objects.create_user(username="sononaymusteri", password="GucluSifre123!")
@@ -510,6 +726,209 @@ class MarketplaceTests(TestCase):
 
         appointment.refresh_from_db()
         self.assertEqual(appointment.status, "confirmed")
+
+    @override_settings(APPOINTMENT_CUSTOMER_CONFIRM_MINUTES=5)
+    def test_pending_customer_appointment_auto_cancels_after_customer_timeout(self):
+        customer = User.objects.create_user(username="sureasimimusteri", password="GucluSifre123!")
+        appointment_request = ServiceRequest.objects.create(
+            customer_name="Sure Asimi Son Onay",
+            customer_phone="05001118887",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Musteri onay timeout testi",
+            matched_provider=self.provider_ali,
+            customer=customer,
+            status="matched",
+        )
+        appointment = ServiceAppointment.objects.create(
+            service_request=appointment_request,
+            customer=customer,
+            provider=self.provider_ali,
+            scheduled_for=timezone.now() + timedelta(days=1),
+            status="pending_customer",
+        )
+        stale_time = timezone.now() - timedelta(minutes=20)
+        ServiceAppointment.objects.filter(id=appointment.id).update(created_at=stale_time, updated_at=stale_time)
+
+        self.client.login(username="sureasimimusteri", password="GucluSifre123!")
+        self.client.get(reverse("my_requests"))
+
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, "cancelled")
+
+    @override_settings(APPOINTMENT_PROVIDER_CONFIRM_MINUTES=5)
+    def test_marketplace_lifecycle_command_processes_stale_appointments(self):
+        customer = User.objects.create_user(username="komuttestmusteri", password="GucluSifre123!")
+        service_request = ServiceRequest.objects.create(
+            customer_name="Komut Test",
+            customer_phone="05003330000",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Lifecycle command testi",
+            matched_provider=self.provider_ali,
+            customer=customer,
+            status="matched",
+        )
+        appointment = ServiceAppointment.objects.create(
+            service_request=service_request,
+            customer=customer,
+            provider=self.provider_ali,
+            scheduled_for=timezone.now() + timedelta(days=1),
+            status="pending",
+        )
+        stale_time = timezone.now() - timedelta(minutes=15)
+        ServiceAppointment.objects.filter(id=appointment.id).update(created_at=stale_time, updated_at=stale_time)
+
+        output = StringIO()
+        call_command("marketplace_lifecycle", stdout=output)
+
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, "cancelled")
+        self.assertIn("Marketplace lifecycle run #1 completed.", output.getvalue())
+        heartbeat = SchedulerHeartbeat.objects.get(worker_name="marketplace_lifecycle")
+        self.assertGreaterEqual(heartbeat.run_count, 1)
+        self.assertIsNotNone(heartbeat.last_success_at)
+
+    def test_marketplace_lifecycle_command_skips_when_lock_held_by_other_worker(self):
+        SchedulerLock.objects.create(
+            worker_name="marketplace_lifecycle",
+            lock_owner="other-worker",
+            locked_until=timezone.now() + timedelta(minutes=2),
+            last_acquired_at=timezone.now(),
+        )
+        output = StringIO()
+        call_command("marketplace_lifecycle", stdout=output)
+
+        self.assertIn("another worker currently holds the lock", output.getvalue())
+        self.assertFalse(SchedulerHeartbeat.objects.filter(worker_name="marketplace_lifecycle").exists())
+
+    def test_marketplace_lifecycle_command_takes_over_expired_lock(self):
+        expired_at = timezone.now() - timedelta(minutes=2)
+        lock = SchedulerLock.objects.create(
+            worker_name="marketplace_lifecycle",
+            lock_owner="old-worker",
+            locked_until=expired_at,
+            last_acquired_at=expired_at,
+        )
+        output = StringIO()
+        call_command("marketplace_lifecycle", "--loop", "--max-runs", "1", "--interval", "1", stdout=output)
+
+        self.assertIn("Marketplace lifecycle run #1 completed.", output.getvalue())
+        heartbeat = SchedulerHeartbeat.objects.get(worker_name="marketplace_lifecycle")
+        self.assertGreaterEqual(heartbeat.run_count, 1)
+        lock.refresh_from_db()
+        self.assertNotEqual(lock.lock_owner, "old-worker")
+        self.assertIsNotNone(lock.locked_until)
+        self.assertGreater(lock.locked_until, timezone.now())
+
+    def test_transition_creates_workflow_event_with_actor_metadata(self):
+        customer = User.objects.create_user(username="eventcustomer", password="GucluSifre123!")
+        service_request = ServiceRequest.objects.create(
+            customer_name="Event Customer",
+            customer_phone="05005556677",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Workflow event test",
+            customer=customer,
+            status="new",
+        )
+
+        transitioned = transition_service_request_status(
+            service_request,
+            "pending_provider",
+            actor_user=customer,
+            actor_role="customer",
+            source="user",
+            note="Event metadata",
+        )
+        self.assertTrue(transitioned)
+        event = WorkflowEvent.objects.filter(service_request=service_request).latest("id")
+        self.assertEqual(event.from_status, "new")
+        self.assertEqual(event.to_status, "pending_provider")
+        self.assertEqual(event.actor_user_id, customer.id)
+        self.assertEqual(event.actor_role, "customer")
+        self.assertEqual(event.source, "user")
+
+    def test_duplicate_post_submission_is_blocked_by_idempotency(self):
+        customer = User.objects.create_user(username="idempotent_customer", password="GucluSifre123!")
+        self.client.login(username="idempotent_customer", password="GucluSifre123!")
+
+        payload = {
+            "customer_name": "Idempotent Customer",
+            "customer_phone": "05001234567",
+            "service_type": self.service.id,
+            "city": "Lefkosa",
+            "district": "Ortakoy",
+            "details": "Ayni istek tekrar gonderiliyor",
+        }
+        self.client.post(reverse("create_request"), data=payload, follow=True)
+        self.client.post(reverse("create_request"), data=payload, follow=True)
+
+        self.assertEqual(ServiceRequest.objects.filter(customer=customer).count(), 1)
+        self.assertEqual(IdempotencyRecord.objects.filter(scope="create-request").count(), 1)
+
+    @override_settings(LIFECYCLE_HEARTBEAT_STALE_SECONDS=5)
+    def test_lifecycle_health_endpoint_reports_healthy_and_stale(self):
+        healthy = SchedulerHeartbeat.objects.create(
+            worker_name="marketplace_lifecycle",
+            run_count=4,
+            last_started_at=timezone.now(),
+            last_success_at=timezone.now(),
+        )
+        response = self.client.get(reverse("lifecycle_health"))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["ok"])
+
+        stale_at = timezone.now() - timedelta(seconds=30)
+        SchedulerHeartbeat.objects.filter(pk=healthy.pk).update(last_success_at=stale_at, last_started_at=stale_at)
+        response = self.client.get(reverse("lifecycle_health"))
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(response.json()["ok"])
+
+    def test_service_request_invalid_transition_is_rejected(self):
+        request_item = ServiceRequest.objects.create(
+            customer_name="Durum Test",
+            customer_phone="05001230000",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Durum akisi testi",
+            status="completed",
+        )
+
+        transitioned = transition_service_request_status(request_item, "matched")
+        request_item.refresh_from_db()
+        self.assertFalse(transitioned)
+        self.assertEqual(request_item.status, "completed")
+
+    def test_appointment_invalid_transition_is_rejected(self):
+        customer = User.objects.create_user(username="durumkontrol", password="GucluSifre123!")
+        request_item = ServiceRequest.objects.create(
+            customer_name="Randevu Durum Test",
+            customer_phone="05003334444",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Randevu durum akisi",
+            matched_provider=self.provider_ali,
+            customer=customer,
+            status="matched",
+        )
+        appointment = ServiceAppointment.objects.create(
+            service_request=request_item,
+            customer=customer,
+            provider=self.provider_ali,
+            scheduled_for=timezone.now() + timedelta(days=1),
+            status="completed",
+        )
+
+        transitioned = transition_appointment_status(appointment, "pending_customer")
+        appointment.refresh_from_db()
+        self.assertFalse(transitioned)
+        self.assertEqual(appointment.status, "completed")
 
     def test_customer_can_cancel_appointment(self):
         customer = User.objects.create_user(username="iptalrandevu", password="GucluSifre123!")
@@ -601,7 +1020,7 @@ class MarketplaceTests(TestCase):
             service_request=appointment_request,
             sender_user=customer,
             sender_role="customer",
-            body="Islem sonrasi mesajlar silinecek mi?",
+            body="Islem sonrasi mesajlar silinecek mi",
         )
 
         self.client.login(username="aliusta", password="GucluSifre123!")
@@ -859,7 +1278,7 @@ class MarketplaceTests(TestCase):
         self.client.login(username="chatcustomer", password="GucluSifre123!")
         self.client.post(
             reverse("request_messages", args=[matched_request.id]),
-            data={"body": "Merhaba, yarin musait misiniz?"},
+            data={"body": "Merhaba, yarin musait misiniz"},
             follow=True,
         )
         self.client.logout()
@@ -895,7 +1314,7 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
         self.assertEqual(get_response.status_code, 200)
-        self.assertContains(get_response, "Tamamlanan veya kapalÄ± taleplerde mesajlaÅŸma aÃ§Ä±k deÄŸildir.")
+        self.assertContains(get_response, "Tamamlanan veya kapalı taleplerde mesajlaşma açık değildir.")
 
         post_response = self.client.post(
             reverse("request_messages", args=[completed_request.id]),
@@ -903,7 +1322,7 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
         self.assertEqual(post_response.status_code, 200)
-        self.assertContains(post_response, "Tamamlanan veya kapalÄ± taleplerde mesajlaÅŸma aÃ§Ä±k deÄŸildir.")
+        self.assertContains(post_response, "Tamamlanan veya kapalı taleplerde mesajlaşma açık değildir.")
         self.assertEqual(ServiceMessage.objects.filter(service_request=completed_request).count(), 0)
 
     def test_customer_can_select_provider_after_offers(self):
@@ -947,6 +1366,51 @@ class MarketplaceTests(TestCase):
         self.assertIsNotNone(service_request.matched_at)
         self.assertEqual(offer_2.status, "accepted")
         self.assertEqual(offer_1.status, "expired")
+
+    def test_customer_cannot_select_offer_from_unverified_provider(self):
+        customer = User.objects.create_user(username="onaysizsecim", password="GucluSifre123!")
+        service_request = ServiceRequest.objects.create(
+            customer_name="Onaysiz Secim Musteri",
+            customer_phone="05001112221",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Onaysiz teklif secim testi",
+            customer=customer,
+            status="pending_customer",
+        )
+        unverified_user = User.objects.create_user(username="onaysizusta", password="GucluSifre123!")
+        unverified_provider = Provider.objects.create(
+            user=unverified_user,
+            full_name="Onaysiz Usta",
+            city="Lefkosa",
+            district="Ortakoy",
+            phone="05550000001",
+            is_verified=False,
+            is_available=True,
+        )
+        unverified_provider.service_types.set([self.service])
+        blocked_offer = ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=unverified_provider,
+            token="UNVER1111",
+            sequence=1,
+            status="accepted",
+            quote_amount=900,
+        )
+
+        self.client.login(username="onaysizsecim", password="GucluSifre123!")
+        response = self.client.post(
+            reverse("select_provider_offer", args=[service_request.id, blocked_offer.id]),
+            follow=True,
+        )
+
+        self.assertContains(response, "usta henüz admin onaylı değil")
+        service_request.refresh_from_db()
+        blocked_offer.refresh_from_db()
+        self.assertIsNone(service_request.matched_provider)
+        self.assertIn(service_request.status, {"pending_provider", "pending_customer", "new"})
+        self.assertIn(blocked_offer.status, {"accepted", "expired"})
 
     def test_offer_comparison_marks_best_offer(self):
         customer = User.objects.create_user(username="karsilastirma", password="GucluSifre123!")
@@ -1077,7 +1541,24 @@ class MarketplaceTests(TestCase):
             data={"username": "aliusta", "password": "GucluSifre123!"},
             follow=True,
         )
-        self.assertContains(response, "Bu hesap usta hesabıdır")
+        self.assertContains(response, "Bu hesap usta hesab")
+
+    @override_settings(LOGIN_RATE_LIMIT_MAX_ATTEMPTS=1, LOGIN_RATE_LIMIT_WINDOW_SECONDS=120)
+    def test_customer_login_rate_limit_blocks_second_attempt(self):
+        User.objects.create_user(username="ratelogin", password="GucluSifre123!")
+
+        self.client.post(
+            reverse("customer_login"),
+            data={"username": "ratelogin", "password": "hatali-sifre"},
+            follow=True,
+        )
+        response = self.client.post(
+            reverse("customer_login"),
+            data={"username": "ratelogin", "password": "hatali-sifre"},
+            follow=True,
+        )
+
+        self.assertContains(response, "Çok kısa sürede çok fazla istek gönderdiniz")
 
     def test_provider_login_rejects_customer_account(self):
         User.objects.create_user(username="normalmusteri", password="GucluSifre123!")
@@ -1089,6 +1570,7 @@ class MarketplaceTests(TestCase):
         self.assertContains(response, "Bu hesap usta olarak")
 
     def test_provider_panel_snapshot_returns_pending_state(self):
+        customer = User.objects.create_user(username="snapshotprovidercustomer", password="GucluSifre123!")
         service_request = ServiceRequest.objects.create(
             customer_name="Canli Takip",
             customer_phone="05009990000",
@@ -1105,6 +1587,23 @@ class MarketplaceTests(TestCase):
             sequence=1,
             status="pending",
         )
+        matched_request = ServiceRequest.objects.create(
+            customer_name="Mesaj Musterisi",
+            customer_phone="05001239876",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Okunmamis mesaj testi",
+            customer=customer,
+            matched_provider=self.provider_ali,
+            status="matched",
+        )
+        ServiceMessage.objects.create(
+            service_request=matched_request,
+            sender_user=customer,
+            sender_role="customer",
+            body="Yeni mesaj",
+        )
 
         self.client.login(username="aliusta", password="GucluSifre123!")
         response = self.client.get(reverse("provider_panel_snapshot"))
@@ -1112,6 +1611,7 @@ class MarketplaceTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["pending_offers_count"], 1)
         self.assertEqual(payload["latest_pending_offer_id"], pending_offer.id)
+        self.assertEqual(payload["unread_messages_count"], 1)
 
     def test_provider_panel_snapshot_forbidden_for_non_provider(self):
         User.objects.create_user(username="normaluser", password="GucluSifre123!")
@@ -1121,7 +1621,7 @@ class MarketplaceTests(TestCase):
 
     def test_customer_requests_snapshot_returns_signature(self):
         customer = User.objects.create_user(username="snapshotcustomer", password="GucluSifre123!")
-        ServiceRequest.objects.create(
+        service_request = ServiceRequest.objects.create(
             customer_name="Snapshot Musteri",
             customer_phone="05001234567",
             city="Lefkosa",
@@ -1129,7 +1629,21 @@ class MarketplaceTests(TestCase):
             service_type=self.service,
             details="Snapshot test",
             customer=customer,
-            status="pending_provider",
+            status="pending_customer",
+        )
+        ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider_ali,
+            token="SNAPSHOT2",
+            sequence=1,
+            status="accepted",
+            quote_amount=1350,
+        )
+        ServiceMessage.objects.create(
+            service_request=service_request,
+            sender_user=self.provider_user_ali,
+            sender_role="provider",
+            body="Teklif detaylarini paylastim.",
         )
 
         self.client.login(username="snapshotcustomer", password="GucluSifre123!")
@@ -1138,6 +1652,9 @@ class MarketplaceTests(TestCase):
         payload = response.json()
         self.assertIn("signature", payload)
         self.assertTrue(payload["signature"])
+        self.assertEqual(payload["pending_customer_requests_count"], 1)
+        self.assertEqual(payload["accepted_offers_count"], 1)
+        self.assertEqual(payload["unread_messages_count"], 1)
 
     def test_customer_requests_snapshot_forbidden_for_provider(self):
         self.client.login(username="aliusta", password="GucluSifre123!")
@@ -1333,6 +1850,83 @@ class MarketplaceTests(TestCase):
         self.assertEqual(profile.city, "Girne")
         self.assertEqual(profile.district, "Karakum")
 
+    def test_customer_can_fund_escrow_for_matched_request(self):
+        customer = User.objects.create_user(username="escrow_musteri", password="GucluSifre123!")
+        self.client.login(username="escrow_musteri", password="GucluSifre123!")
+        service_request = ServiceRequest.objects.create(
+            customer_name="Escrow Musteri",
+            customer_phone="05001230000",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Escrow test",
+            customer=customer,
+            matched_provider=self.provider_ali,
+            status="matched",
+        )
+        offer = ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider_ali,
+            token="ESCROW001",
+            sequence=1,
+            status="accepted",
+            quote_amount=1250,
+        )
+        service_request.matched_offer = offer
+        service_request.save(update_fields=["matched_offer"])
+
+        response = self.client.post(reverse("fund_escrow", args=[service_request.id]), follow=True)
+        self.assertEqual(response.status_code, 200)
+        escrow = EscrowPayment.objects.get(service_request=service_request)
+        self.assertEqual(escrow.status, "funded")
+        self.assertEqual(float(escrow.funded_amount), 1250.0)
+
+    def test_customer_appointment_respects_provider_availability_slots(self):
+        customer = User.objects.create_user(username="slot_musteri", password="GucluSifre123!")
+        self.client.login(username="slot_musteri", password="GucluSifre123!")
+        service_request = ServiceRequest.objects.create(
+            customer_name="Slot Musteri",
+            customer_phone="05002223344",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Slot kontrol testi",
+            customer=customer,
+            matched_provider=self.provider_ali,
+            status="matched",
+        )
+
+        ProviderAvailabilitySlot.objects.create(
+            provider=self.provider_ali,
+            weekday=0,
+            start_time=time(9, 0),
+            end_time=time(12, 0),
+            is_active=True,
+        )
+
+        local_candidate = timezone.localtime(timezone.now() + timedelta(days=1)).replace(
+            hour=15,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        while local_candidate.weekday() != 0:
+            local_candidate += timedelta(days=1)
+        if local_candidate <= timezone.localtime(timezone.now()):
+            local_candidate += timedelta(days=7)
+
+        response = self.client.post(
+            reverse("create_appointment", args=[service_request.id]),
+            data={
+                "scheduled_for": local_candidate.strftime("%Y-%m-%dT%H:%M"),
+                "customer_note": "Slot disi deneme",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "musaitlik araliginda")
+        self.assertFalse(ServiceAppointment.objects.filter(service_request=service_request).exists())
+
     def test_provider_contact_update_redirects_to_provider_profile(self):
         self.client.login(username="aliusta", password="GucluSifre123!")
         response = self.client.post(
@@ -1374,38 +1968,8 @@ class MarketplaceTests(TestCase):
         self.client.logout()
         self.assertTrue(self.client.login(username="sifredegis", password="YeniGucluSifre123!"))
 
-    def test_provider_packages_page_loads_for_provider(self):
-        self.client.login(username="aliusta", password="GucluSifre123!")
-        response = self.client.get(reverse("provider_packages"))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Kredi ve Paketler")
 
-    def test_provider_package_purchase_adds_credits(self):
-        self.client.login(username="aliusta", password="GucluSifre123!")
-        wallet, _ = ProviderWallet.objects.get_or_create(provider=self.provider_ali, defaults={"balance": 0})
-        wallet.balance = 0
-        wallet.save(update_fields=["balance", "updated_at"])
-
-        response = self.client.post(
-            reverse("provider_packages"),
-            data={"package_key": "basic"},
-            follow=True,
-        )
-        self.assertEqual(response.status_code, 200)
-        wallet.refresh_from_db()
-        self.assertGreater(wallet.balance, 0)
-        self.assertTrue(
-            CreditTransaction.objects.filter(
-                provider=self.provider_ali,
-                transaction_type="package_purchase",
-            ).exists()
-        )
-
-    def test_provider_accept_offer_requires_credit(self):
-        wallet, _ = ProviderWallet.objects.get_or_create(provider=self.provider_ali, defaults={"balance": 0})
-        wallet.balance = 0
-        wallet.save(update_fields=["balance", "updated_at"])
-
+    def test_provider_accept_offer_succeeds_without_credit_requirement(self):
         service_request = ServiceRequest.objects.create(
             customer_name="Kredi Yok",
             customer_phone="05000000222",
@@ -1430,10 +1994,12 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Teklif gÃ¶ndermek iÃ§in en az")
         offer.refresh_from_db()
         service_request.refresh_from_db()
-        self.assertEqual(offer.status, "pending")
-        self.assertEqual(service_request.status, "pending_provider")
+        self.assertEqual(offer.status, "accepted")
+        self.assertEqual(service_request.status, "pending_customer")
+
+
+
 
 

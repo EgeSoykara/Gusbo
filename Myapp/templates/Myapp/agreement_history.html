@@ -124,6 +124,28 @@
           </tbody>
         </table>
       </div>
+      {% if agreements_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">
+            Sayfa {{ agreements_page_obj.number }} / {{ agreements_page_obj.paginator.num_pages }}
+          </span>
+          <nav aria-label="Anlaşma geçmişi sayfalama">
+            <ul class="pagination pagination-sm mb-0">
+              <li class="page-item {% if not agreements_page_obj.has_previous %}disabled{% endif %}">
+                <a class="page-link" href="page={% if agreements_page_obj.has_previous %}{{ agreements_page_obj.previous_page_number }}{% else %}1{% endif %}" aria-label="Önceki">
+                  <span aria-hidden="true">&laquo;</span>
+                </a>
+              </li>
+              <li class="page-item disabled"><span class="page-link">{{ agreements_page_obj.number }}</span></li>
+              <li class="page-item {% if not agreements_page_obj.has_next %}disabled{% endif %}">
+                <a class="page-link" href="page={% if agreements_page_obj.has_next %}{{ agreements_page_obj.next_page_number }}{% else %}{{ agreements_page_obj.paginator.num_pages }}{% endif %}" aria-label="Sonraki">
+                  <span aria-hidden="true">&raquo;</span>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
     {% else %}
       <p class="mb-0 text-muted">Henüz kayıtlı bir anlaşma bulunmuyor.</p>
     {% endif %}

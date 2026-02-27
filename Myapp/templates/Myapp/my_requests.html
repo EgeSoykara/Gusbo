@@ -81,73 +81,239 @@
                 <td>
                   {% if item.status == "matched" %}
                     <div class="request-actions-stack">
-                      <a href="{% url 'request_messages' item.id %}" class="btn btn-sm nav-ghost-btn">
-                        <i class="bi bi-chat-dots me-1"></i>Mesajlar
-                        {% if item.unread_messages %}
-                          <span class="chat-unread-badge">{{ item.unread_messages }}</span>
-                        {% endif %}
-                      </a>
-                      <form method="post" action="{% url 'complete_request' item.id %}" class="m-0">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-sm request-complete-btn">
-                          <i class="bi bi-check2-circle me-1"></i>Tamamlandı
-                        </button>
-                      </form>
-
-                      {% if item.appointment_entry %}
-                        {% if item.appointment_entry.status == "pending" or item.appointment_entry.status == "pending_customer" or item.appointment_entry.status == "confirmed" %}
-                          {% if item.appointment_entry.status == "pending_customer" %}
-                            <form method="post" action="{% url 'customer_confirm_appointment' item.id %}" class="m-0">
+                      {% if item.escrow_entry %}
+                        <div class="request-action-group">
+                          <div class="request-action-title">Emanet Odeme</div>
+                          <div class="request-action-note">
+                            Durum: {{ item.escrow_entry.get_status_display }}{% if item.escrow_entry.agreed_amount %} - {{ item.escrow_entry.agreed_amount }} TL{% endif %}
+                          </div>
+                          {% if item.escrow_entry.status == "awaiting_funding" %}
+                            <form method="post" action="{% url 'fund_escrow' item.id %}" class="m-0">
                               {% csrf_token %}
-                              <button type="submit" class="btn btn-sm request-complete-btn">
-                                <i class="bi bi-patch-check me-1"></i>Randevuyu Onayla
+                              <input
+                                type="number"
+                                name="amount"
+                                min="1"
+                                step="0.01"
+                                class="appointment-note-input"
+                                value="{{ item.escrow_entry.agreed_amount }}"
+                                placeholder="Tutar"
+                                required
+                              >
+                              <button type="submit" class="btn btn-sm btn-main mt-2">
+                                <i class="bi bi-shield-lock me-1"></i>Emanete Aktar
+                              </button>
+                            </form>
+                          {% elif item.escrow_entry.status == "funded" %}
+                            <div class="request-action-note text-success">
+                              <i class="bi bi-shield-check me-1"></i>Odeme guvende tutuluyor.
+                            </div>
+                          {% elif item.escrow_entry.status == "released" %}
+                            <div class="request-action-note text-success">
+                              <i class="bi bi-cash-coin me-1"></i>Odeme ustaya aktarildi.
+                            </div>
+                          {% endif %}
+                        </div>
+                      {% endif %}
+
+                      <div class="request-action-group">
+                        <div class="request-action-title">İletişim</div>
+                        <a href="{% url 'request_messages' item.id %}" class="btn btn-sm nav-ghost-btn">
+                          <i class="bi bi-chat-dots me-1"></i>Mesajlar
+                          {% if item.unread_messages %}
+                            <span class="chat-unread-badge">{{ item.unread_messages }}</span>
+                          {% endif %}
+                        </a>
+                      </div>
+
+                      <div class="request-action-group">
+                        <div class="request-action-title">İş Durumu</div>
+                        {% if item.can_complete_now %}
+                          <form
+                            method="post"
+                            action="{% url 'complete_request' item.id %}"
+                            class="m-0"
+                            data-complete-confirm-form
+                          >
+                            {% csrf_token %}
+                            <button type="button" class="btn btn-sm request-complete-btn" data-complete-open>
+                              <i class="bi bi-check2-circle me-1"></i>Tamamlandı
+                            </button>
+                            <div class="request-complete-inline-confirm d-none" data-complete-confirm-box>
+                              <div class="request-complete-inline-text">Bu işi tamamlandı olarak işaretlemeyi onaylıyor musunuz</div>
+                              <div class="request-complete-inline-actions">
+                                <button type="submit" class="btn btn-sm request-complete-confirm-btn">
+                                  <i class="bi bi-check2-circle me-1"></i>Evet, Onayla
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" data-complete-cancel>
+                                  Vazgeç
+                                </button>
+                              </div>
+                            </div>
+                          </form>
+                        {% else %}
+                          <div class="request-action-note">
+                            <i class="bi bi-hourglass-split me-1"></i>Şu an tamamlanamaz
+                          </div>
+                          {% if item.complete_block_reason %}
+                            <div class="request-action-note">{{ item.complete_block_reason }}</div>
+                          {% endif %}
+                        {% endif %}
+                      </div>
+
+                      <details class="request-action-collapse" {% if not item.appointment_entry or item.appointment_entry.status == "pending_customer" %}open{% endif %}>
+                        <summary><i class="bi bi-calendar3 me-1"></i>Randevu İşlemleri</summary>
+                        <div class="request-action-collapse-body">
+                          {% if item.appointment_entry %}
+                            {% if item.appointment_entry.status == "pending" or item.appointment_entry.status == "pending_customer" or item.appointment_entry.status == "confirmed" %}
+                              {% if item.appointment_entry.status == "pending_customer" %}
+                                <div class="request-action-note">
+                                  <i class="bi bi-patch-check me-1"></i>Usta onayı verildi, randevu onaylandı.
+                                </div>
+                              {% endif %}
+                              <form method="post" action="{% url 'cancel_appointment' item.id %}" class="m-0">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                  <i class="bi bi-calendar-x me-1"></i>Randevuyu İptal Et
+                                </button>
+                              </form>
+                              <form method="post" action="{% url 'create_appointment' item.id %}" class="appointment-create-form">
+                                {% csrf_token %}
+                                <div class="appointment-scheduler" data-appointment-scheduler>
+                                  <div class="appointment-scheduler-title">Hızlı randevu</div>
+                                  {% if item.provider_availability_slots %}
+                                    <div class="appointment-availability-hint">
+                                      Usta musaitligi:
+                                      {% for slot in item.provider_availability_slots %}
+                                        {{ slot.get_weekday_display }} {{ slot.start_time|time:"H:i" }}-{{ slot.end_time|time:"H:i" }}{% if not forloop.last %}, {% endif %}
+                                      {% endfor %}
+                                    </div>
+                                  {% endif %}
+                                  <input type="hidden" name="appointment_preset" value="" data-appointment-preset-input>
+                                  <div class="appointment-quick-grid">
+                                    <button type="button" class="appointment-quick-btn" data-appointment-preset-btn="now">Şimdi</button>
+                                    <button type="button" class="appointment-quick-btn" data-appointment-preset-btn="30m">+30 dk</button>
+                                    <button type="button" class="appointment-quick-btn" data-appointment-preset-btn="1h">+1 saat</button>
+                                    <button type="button" class="appointment-quick-btn" data-appointment-preset-btn="2h">+2 saat</button>
+                                  </div>
+                                  <label class="appointment-detail-label" for="appointment-datetime-{{ item.id }}">
+                                    veya detaylı tarih/saat seç
+                                  </label>
+                                  <input
+                                    id="appointment-datetime-{{ item.id }}"
+                                    type="datetime-local"
+                                    name="scheduled_for"
+                                    value="{{ item.appointment_entry.scheduled_for|date:'Y-m-d\\TH:i' }}"
+                                    data-appointment-datetime
+                                  >
+                                  <div class="appointment-summary" data-appointment-summary></div>
+                                </div>
+                                <textarea name="customer_note" rows="2" placeholder="Randevu notu (isteğe bağlı)">{{ item.appointment_entry.customer_note }}</textarea>
+                                <button type="submit" class="btn btn-sm btn-main">
+                                  <i class="bi bi-calendar-event me-1"></i>Randevuyu Güncelle
+                                </button>
+                              </form>
+                            {% elif item.appointment_entry.status == "rejected" or item.appointment_entry.status == "cancelled" %}
+                              <form method="post" action="{% url 'create_appointment' item.id %}" class="appointment-create-form">
+                                {% csrf_token %}
+                                <div class="appointment-scheduler" data-appointment-scheduler>
+                                  <div class="appointment-scheduler-title">Hızlı randevu</div>
+                                  {% if item.provider_availability_slots %}
+                                    <div class="appointment-availability-hint">
+                                      Usta musaitligi:
+                                      {% for slot in item.provider_availability_slots %}
+                                        {{ slot.get_weekday_display }} {{ slot.start_time|time:"H:i" }}-{{ slot.end_time|time:"H:i" }}{% if not forloop.last %}, {% endif %}
+                                      {% endfor %}
+                                    </div>
+                                  {% endif %}
+                                  <input type="hidden" name="appointment_preset" value="" data-appointment-preset-input>
+                                  <div class="appointment-quick-grid">
+                                    <button type="button" class="appointment-quick-btn" data-appointment-preset-btn="now">Şimdi</button>
+                                    <button type="button" class="appointment-quick-btn" data-appointment-preset-btn="30m">+30 dk</button>
+                                    <button type="button" class="appointment-quick-btn" data-appointment-preset-btn="1h">+1 saat</button>
+                                    <button type="button" class="appointment-quick-btn" data-appointment-preset-btn="2h">+2 saat</button>
+                                  </div>
+                                  <label class="appointment-detail-label" for="appointment-datetime-retry-{{ item.id }}">
+                                    veya detaylı tarih/saat seç
+                                  </label>
+                                  <input
+                                    id="appointment-datetime-retry-{{ item.id }}"
+                                    type="datetime-local"
+                                    name="scheduled_for"
+                                    data-appointment-datetime
+                                  >
+                                  <div class="appointment-summary" data-appointment-summary></div>
+                                </div>
+                                <textarea name="customer_note" rows="2" placeholder="Randevu notu (isteğe bağlı)"></textarea>
+                                <button type="submit" class="btn btn-sm btn-main">
+                                  <i class="bi bi-calendar-plus me-1"></i>Tekrar Randevu Al
+                                </button>
+                              </form>
+                            {% endif %}
+                          {% else %}
+                            <form method="post" action="{% url 'create_appointment' item.id %}" class="appointment-create-form">
+                              {% csrf_token %}
+                              <div class="appointment-scheduler" data-appointment-scheduler>
+                                <div class="appointment-scheduler-title">Hızlı randevu</div>
+                                {% if item.provider_availability_slots %}
+                                  <div class="appointment-availability-hint">
+                                    Usta musaitligi:
+                                    {% for slot in item.provider_availability_slots %}
+                                      {{ slot.get_weekday_display }} {{ slot.start_time|time:"H:i" }}-{{ slot.end_time|time:"H:i" }}{% if not forloop.last %}, {% endif %}
+                                    {% endfor %}
+                                  </div>
+                                {% endif %}
+                                <input type="hidden" name="appointment_preset" value="" data-appointment-preset-input>
+                                <div class="appointment-quick-grid">
+                                  <button type="button" class="appointment-quick-btn" data-appointment-preset-btn="now">Şimdi</button>
+                                  <button type="button" class="appointment-quick-btn" data-appointment-preset-btn="30m">+30 dk</button>
+                                  <button type="button" class="appointment-quick-btn" data-appointment-preset-btn="1h">+1 saat</button>
+                                  <button type="button" class="appointment-quick-btn" data-appointment-preset-btn="2h">+2 saat</button>
+                                </div>
+                                <label class="appointment-detail-label" for="appointment-datetime-new-{{ item.id }}">
+                                  veya detaylı tarih/saat seç
+                                </label>
+                                <input
+                                  id="appointment-datetime-new-{{ item.id }}"
+                                  type="datetime-local"
+                                  name="scheduled_for"
+                                  data-appointment-datetime
+                                >
+                                <div class="appointment-summary" data-appointment-summary></div>
+                              </div>
+                              <textarea name="customer_note" rows="2" placeholder="Randevu notu (isteğe bağlı)"></textarea>
+                              <button type="submit" class="btn btn-sm btn-main">
+                                <i class="bi bi-calendar-plus me-1"></i>Randevu Al
                               </button>
                             </form>
                           {% endif %}
-                          <form method="post" action="{% url 'cancel_appointment' item.id %}" class="m-0">
-                            {% csrf_token %}
-                            <button type="submit" class="btn btn-sm btn-outline-danger">
-                              <i class="bi bi-calendar-x me-1"></i>Randevuyu İptal Et
-                            </button>
-                          </form>
-                          <form method="post" action="{% url 'create_appointment' item.id %}" class="appointment-create-form">
-                            {% csrf_token %}
-                            <input
-                              type="datetime-local"
-                              name="scheduled_for"
-                              value="{{ item.appointment_entry.scheduled_for|date:'Y-m-d\\TH:i' }}"
-                              required
-                            >
-                            <textarea name="customer_note" rows="2" placeholder="Randevu notu (isteğe bağlı)">{{ item.appointment_entry.customer_note }}</textarea>
-                            <button type="submit" class="btn btn-sm btn-main">
-                              <i class="bi bi-calendar-event me-1"></i>Randevuyu Güncelle
-                            </button>
-                          </form>
-                        {% elif item.appointment_entry.status == "rejected" or item.appointment_entry.status == "cancelled" %}
-                          <form method="post" action="{% url 'create_appointment' item.id %}" class="appointment-create-form">
-                            {% csrf_token %}
-                            <input type="datetime-local" name="scheduled_for" required>
-                            <textarea name="customer_note" rows="2" placeholder="Randevu notu (isteğe bağlı)"></textarea>
-                            <button type="submit" class="btn btn-sm btn-main">
-                              <i class="bi bi-calendar-plus me-1"></i>Tekrar Randevu Al
-                            </button>
-                          </form>
-                        {% endif %}
-                      {% else %}
-                        <form method="post" action="{% url 'create_appointment' item.id %}" class="appointment-create-form">
-                          {% csrf_token %}
-                          <input type="datetime-local" name="scheduled_for" required>
-                          <textarea name="customer_note" rows="2" placeholder="Randevu notu (isteğe bağlı)"></textarea>
-                          <button type="submit" class="btn btn-sm btn-main">
-                            <i class="bi bi-calendar-plus me-1"></i>Randevu Al
-                          </button>
-                        </form>
-                      {% endif %}
+                        </div>
+                      </details>
                     </div>
                   {% elif item.status == "completed" %}
                     {% if item.matched_provider %}
                       <div class="request-actions-stack">
                         <span class="small text-muted"><i class="bi bi-lock-fill me-1"></i>Mesajlaşma tamamlanan işte kapalı.</span>
+                        {% if item.escrow_entry %}
+                          <div class="request-action-group">
+                            <div class="request-action-title">Emanet Odeme</div>
+                            <div class="request-action-note">
+                              Durum: {{ item.escrow_entry.get_status_display }}{% if item.escrow_entry.funded_amount %} - {{ item.escrow_entry.funded_amount }} TL{% endif %}
+                            </div>
+                            {% if item.escrow_entry.status == "funded" %}
+                              <form method="post" action="{% url 'release_escrow' item.id %}" class="m-0">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm request-complete-confirm-btn">
+                                  <i class="bi bi-cash-coin me-1"></i>Odemeyi Serbest Birak
+                                </button>
+                              </form>
+                            {% elif item.escrow_entry.status == "released" %}
+                              <div class="request-action-note text-success">
+                                <i class="bi bi-check2-circle me-1"></i>Odeme ustaya aktarildi.
+                              </div>
+                            {% endif %}
+                          </div>
+                        {% endif %}
                         <form method="post" action="{% url 'rate_request' item.id %}" class="request-rate-form">
                           {% csrf_token %}
                           <div class="request-rate-row">
@@ -202,7 +368,10 @@
                               <span>Puan {{ offer.rating_score }}</span>
                               <span>Hız {{ offer.speed_score }}</span>
                             </div>
-                            <div class="small text-muted mb-2">Usta puanı: {{ offer.provider.rating }}/5</div>
+                            <div class="small text-muted mb-2">
+                              Skor formülü: Fiyat (55) + Usta puanı (35) + Hız (10). Hız, teklifin geliş sırasına göre hesaplanır.
+                            </div>
+                            <div class="small text-muted mb-2">Usta puani: {{ offer.provider.rating }}/5</div>
                             {% if offer.quote_note %}
                               <div class="small text-muted mb-2">{{ offer.quote_note }}</div>
                             {% endif %}
@@ -248,15 +417,216 @@
           </tbody>
         </table>
       </div>
+      {% if requests_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">
+            Sayfa {{ requests_page_obj.number }} / {{ requests_page_obj.paginator.num_pages }}
+          </span>
+          <nav aria-label="Taleplerim sayfalama">
+            <ul class="pagination pagination-sm mb-0">
+              <li class="page-item {% if not requests_page_obj.has_previous %}disabled{% endif %}">
+                <a class="page-link" href="page={% if requests_page_obj.has_previous %}{{ requests_page_obj.previous_page_number }}{% else %}1{% endif %}" aria-label="Önceki">
+                  <span aria-hidden="true">&laquo;</span>
+                </a>
+              </li>
+              <li class="page-item disabled"><span class="page-link">{{ requests_page_obj.number }}</span></li>
+              <li class="page-item {% if not requests_page_obj.has_next %}disabled{% endif %}">
+                <a class="page-link" href="page={% if requests_page_obj.has_next %}{{ requests_page_obj.next_page_number }}{% else %}{{ requests_page_obj.paginator.num_pages }}{% endif %}" aria-label="Sonraki">
+                  <span aria-hidden="true">&raquo;</span>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
     {% else %}
       <p class="mb-0 text-muted">Henüz talebin yok. Ana sayfadan yeni talep oluşturabilirsin.</p>
     {% endif %}
   </div>
 </section>
+<script>
+  (function () {
+    const confirmForms = document.querySelectorAll("form[data-complete-confirm-form]");
+    if (!confirmForms.length) return;
+
+    function closeFormConfirmation(form) {
+      const openButton = form.querySelector("[data-complete-open]");
+      const confirmBox = form.querySelector("[data-complete-confirm-box]");
+      if (!openButton || !confirmBox) return;
+      confirmBox.classList.add("d-none");
+      openButton.classList.remove("d-none");
+    }
+
+    function closeAllExcept(excludedForm) {
+      confirmForms.forEach(function (form) {
+        if (form === excludedForm) return;
+        closeFormConfirmation(form);
+      });
+    }
+
+    confirmForms.forEach(function (form) {
+      const openButton = form.querySelector("[data-complete-open]");
+      const confirmBox = form.querySelector("[data-complete-confirm-box]");
+      const cancelButton = form.querySelector("[data-complete-cancel]");
+      if (!openButton || !confirmBox) return;
+
+      openButton.addEventListener("click", function () {
+        closeAllExcept(form);
+        confirmBox.classList.remove("d-none");
+        openButton.classList.add("d-none");
+      });
+
+      if (cancelButton) {
+        cancelButton.addEventListener("click", function () {
+          closeFormConfirmation(form);
+        });
+      }
+    });
+
+    document.addEventListener("click", function (event) {
+      if (event.target.closest("[data-complete-confirm-form]")) return;
+      closeAllExcept(null);
+    });
+  })();
+</script>
+<script>
+  (function () {
+    const forms = document.querySelectorAll(".appointment-create-form");
+    if (!forms.length) return;
+
+    const presetMap = {
+      now: { minutes: 1, label: "hemen" },
+      "30m": { minutes: 30, label: "30 dakika sonra" },
+      "1h": { minutes: 60, label: "1 saat sonra" },
+      "2h": { minutes: 120, label: "2 saat sonra" },
+    };
+
+    function toDateTimeLocal(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      const hours = String(date.getHours()).padStart(2, "0");
+      const minutes = String(date.getMinutes()).padStart(2, "0");
+      return year + "-" + month + "-" + day + "T" + hours + ":" + minutes;
+    }
+
+    function formatHumanDate(date) {
+      return new Intl.DateTimeFormat("tr-TR", {
+        weekday: "short",
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(date);
+    }
+
+    function nextDateByMinutes(minutes) {
+      const selectedDate = new Date();
+      selectedDate.setMinutes(selectedDate.getMinutes() + minutes);
+      selectedDate.setSeconds(0, 0);
+      return selectedDate;
+    }
+
+    forms.forEach(function (form) {
+      const scheduler = form.querySelector("[data-appointment-scheduler]");
+      if (!scheduler) return;
+
+      const presetInput = scheduler.querySelector("[data-appointment-preset-input]");
+      const dateInput = scheduler.querySelector("[data-appointment-datetime]");
+      const summary = scheduler.querySelector("[data-appointment-summary]");
+      const quickButtons = scheduler.querySelectorAll("[data-appointment-preset-btn]");
+      if (!presetInput || !dateInput || !summary || !quickButtons.length) return;
+
+      function updateMinDate() {
+        dateInput.min = toDateTimeLocal(nextDateByMinutes(1));
+      }
+
+      function setSummary(text, isError) {
+        summary.textContent = text;
+        summary.classList.toggle("appointment-summary-error", Boolean(isError));
+      }
+
+      function clearActiveButtons() {
+        quickButtons.forEach(function (button) {
+          button.classList.remove("active");
+        });
+      }
+
+      function setPresetValue(presetValue) {
+        presetInput.value = presetValue || "";
+        clearActiveButtons();
+        if (!presetValue) return;
+        const activeButton = scheduler.querySelector('[data-appointment-preset-btn="' + presetValue + '"]');
+        if (activeButton) {
+          activeButton.classList.add("active");
+        }
+      }
+
+      function applyPreset(presetValue) {
+        const preset = presetMap[presetValue];
+        if (!preset) return;
+        const nextDate = nextDateByMinutes(preset.minutes);
+        setPresetValue(presetValue);
+        dateInput.value = toDateTimeLocal(nextDate);
+        dateInput.setCustomValidity("");
+        setSummary("Seçilen randevu: " + formatHumanDate(nextDate) + " (" + preset.label + ")", false);
+      }
+
+      function applyManualValue() {
+        if (!dateInput.value) {
+          setPresetValue("");
+          setSummary("Hızlı seçim yapın veya detaylı tarih/saat girin.", false);
+          return;
+        }
+        setPresetValue("");
+        const parsedDate = new Date(dateInput.value);
+        if (Number.isNaN(parsedDate.getTime())) {
+          setSummary("Tarih/saat formatı geçersiz.", true);
+          return;
+        }
+        dateInput.setCustomValidity("");
+        setSummary("Seçilen randevu: " + formatHumanDate(parsedDate) + " (detaylı seçim)", false);
+      }
+
+      quickButtons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          applyPreset(button.dataset.appointmentPresetBtn || "");
+        });
+      });
+
+      dateInput.addEventListener("input", applyManualValue);
+
+      form.addEventListener("submit", function (event) {
+        updateMinDate();
+        if (!presetInput.value && !dateInput.value) {
+          event.preventDefault();
+          dateInput.setCustomValidity("Lütfen randevu zamanı seçin.");
+          dateInput.reportValidity();
+          setSummary("Gönderim için randevu zamanı seçmelisiniz.", true);
+          return;
+        }
+        dateInput.setCustomValidity("");
+      });
+
+      updateMinDate();
+      if (dateInput.value) {
+        applyManualValue();
+      } else {
+        setSummary("Hızlı seçim yapın veya detaylı tarih/saat girin.", false);
+      }
+    });
+  })();
+</script>
 <div
   id="customer-live-sync"
   data-snapshot-url="{% url 'customer_requests_snapshot' %}"
   data-signature="{{ customer_requests_signature }}"
+  data-pending-customer-requests-count="{{ customer_snapshot.pending_customer_requests_count }}"
+  data-matched-requests-count="{{ customer_snapshot.matched_requests_count }}"
+  data-pending-customer-appointments-count="{{ customer_snapshot.pending_customer_appointments_count }}"
+  data-confirmed-appointments-count="{{ customer_snapshot.confirmed_appointments_count }}"
+  data-accepted-offers-count="{{ customer_snapshot.accepted_offers_count }}"
+  data-unread-messages-count="{{ customer_snapshot.unread_messages_count }}"
 ></div>
 <script>
   (function () {
@@ -265,10 +635,122 @@
     const snapshotUrl = syncRoot.dataset.snapshotUrl;
     if (!snapshotUrl) return;
 
-    let baselineSignature = syncRoot.dataset.signature || "";
+    const defaultTitle = document.title;
+    let titleFlashTimer = null;
+    let titleFlashOn = false;
+    let reloadTimer = null;
+    const badgeCountKey = "ustabul_customer_unseen_count";
+    const snapshotKey = "ustabul_customer_last_snapshot";
+    let baseline = {
+      signature: syncRoot.dataset.signature || "",
+      pendingCustomerRequestsCount: Number(syncRoot.dataset.pendingCustomerRequestsCount || 0),
+      matchedRequestsCount: Number(syncRoot.dataset.matchedRequestsCount || 0),
+      pendingCustomerAppointmentsCount: Number(syncRoot.dataset.pendingCustomerAppointmentsCount || 0),
+      confirmedAppointmentsCount: Number(syncRoot.dataset.confirmedAppointmentsCount || 0),
+      acceptedOffersCount: Number(syncRoot.dataset.acceptedOffersCount || 0),
+      unreadMessagesCount: Number(syncRoot.dataset.unreadMessagesCount || 0),
+    };
+
+    function renderNavBadge(selector, count) {
+      const targets = document.querySelectorAll(selector);
+      if (!targets.length) return;
+      targets.forEach(function (target) {
+        let badge = target.querySelector(".nav-live-badge");
+        if (!count) {
+          if (badge) badge.remove();
+          return;
+        }
+        if (!badge) {
+          badge = document.createElement("span");
+          badge.className = "nav-live-badge";
+          target.appendChild(badge);
+        }
+        badge.textContent = count > 99 ? "99+" : String(count);
+      });
+    }
+
+    function buildCustomerSnapshot(state) {
+      return {
+        acceptedOffersCount: Number(state.acceptedOffersCount || 0),
+        pendingCustomerAppointmentsCount: Number(state.pendingCustomerAppointmentsCount || 0),
+        confirmedAppointmentsCount: Number(state.confirmedAppointmentsCount || 0),
+        unreadMessagesCount: Number(state.unreadMessagesCount || 0),
+        pendingCustomerRequestsCount: Number(state.pendingCustomerRequestsCount || 0),
+        matchedRequestsCount: Number(state.matchedRequestsCount || 0),
+        signature: state.signature || "",
+      };
+    }
+
+    function markCustomerNotificationsSeen(state) {
+      const snapshot = buildCustomerSnapshot(state);
+      try {
+        localStorage.setItem(badgeCountKey, "0");
+        localStorage.setItem(snapshotKey, JSON.stringify(snapshot));
+      } catch (error) {
+        void error;
+      }
+      renderNavBadge("[data-live-customer-nav]", 0);
+    }
+
+    function stopTitleFlash() {
+      if (!titleFlashTimer) return;
+      window.clearInterval(titleFlashTimer);
+      titleFlashTimer = null;
+      titleFlashOn = false;
+      document.title = defaultTitle;
+    }
+
+    function flashTitle(message) {
+      if (!document.hidden) return;
+      stopTitleFlash();
+      titleFlashTimer = window.setInterval(function () {
+        titleFlashOn = !titleFlashOn;
+        document.title = titleFlashOn ? "* " + message : defaultTitle;
+      }, 900);
+      window.setTimeout(stopTitleFlash, 10000);
+    }
+
+    function showInlineNotice(message) {
+      let toast = document.getElementById("customer-live-notice");
+      if (!toast) {
+        toast = document.createElement("div");
+        toast.id = "customer-live-notice";
+        toast.className = "live-sync-toast";
+        document.body.appendChild(toast);
+      }
+      toast.innerHTML = '<i class="bi bi-bell-fill"></i><span>' + message + "</span>";
+      toast.classList.add("show");
+      window.setTimeout(function () {
+        toast.classList.remove("show");
+      }, 2600);
+    }
+
+    function triggerLiveAlert(message) {
+      if (!message) return;
+      showInlineNotice(message);
+      document.body.classList.add("live-sync-attention");
+      window.setTimeout(function () {
+        document.body.classList.remove("live-sync-attention");
+      }, 1500);
+      flashTitle(message);
+    }
+
+    function scheduleReload(delayMs) {
+      if (reloadTimer) return;
+      reloadTimer = window.setTimeout(function () {
+        window.location.reload();
+      }, delayMs);
+    }
+
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) {
+        stopTitleFlash();
+      }
+    });
+
+    markCustomerNotificationsSeen(baseline);
 
     async function pollCustomerRequests() {
-      if (document.hidden) return;
       try {
         const response = await fetch(snapshotUrl, {
           method: "GET",
@@ -278,9 +760,45 @@
         });
         if (!response.ok) return;
         const payload = await response.json();
-        const nextSignature = payload.signature || "";
-        if (nextSignature && nextSignature !== baselineSignature) {
-          window.location.reload();
+        const nextState = {
+          signature: payload.signature || "",
+          pendingCustomerRequestsCount: Number(payload.pending_customer_requests_count || 0),
+          matchedRequestsCount: Number(payload.matched_requests_count || 0),
+          pendingCustomerAppointmentsCount: Number(payload.pending_customer_appointments_count || 0),
+          confirmedAppointmentsCount: Number(payload.confirmed_appointments_count || 0),
+          acceptedOffersCount: Number(payload.accepted_offers_count || 0),
+          unreadMessagesCount: Number(payload.unread_messages_count || 0),
+        };
+        const hasChanges =
+          nextState.signature !== baseline.signature ||
+          nextState.pendingCustomerRequestsCount !== baseline.pendingCustomerRequestsCount ||
+          nextState.matchedRequestsCount !== baseline.matchedRequestsCount ||
+          nextState.pendingCustomerAppointmentsCount !== baseline.pendingCustomerAppointmentsCount ||
+          nextState.confirmedAppointmentsCount !== baseline.confirmedAppointmentsCount ||
+          nextState.acceptedOffersCount !== baseline.acceptedOffersCount ||
+          nextState.unreadMessagesCount !== baseline.unreadMessagesCount;
+
+        if (hasChanges) {
+          let message = "Talepleriniz güncellendi.";
+          if (
+            nextState.acceptedOffersCount > baseline.acceptedOffersCount ||
+            nextState.pendingCustomerRequestsCount > baseline.pendingCustomerRequestsCount
+          ) {
+            message = "Bir usta işinizi kabul etti. Teklifleri kontrol edin.";
+          } else if (nextState.unreadMessagesCount > baseline.unreadMessagesCount) {
+            message = "Yeni bir mesajınız var.";
+          } else if (nextState.confirmedAppointmentsCount > baseline.confirmedAppointmentsCount) {
+            message = "Randevunuz usta tarafından onaylandı.";
+          } else if (nextState.pendingCustomerAppointmentsCount > baseline.pendingCustomerAppointmentsCount) {
+            message = "Onayınızı bekleyen yeni bir randevu var.";
+          } else if (nextState.matchedRequestsCount > baseline.matchedRequestsCount) {
+            message = "Talebiniz bir usta ile eşleşti.";
+          }
+
+          baseline = nextState;
+          markCustomerNotificationsSeen(nextState);
+          triggerLiveAlert(message);
+          scheduleReload(1500);
         }
       } catch (error) {
         void error;
@@ -291,4 +809,5 @@
   })();
 </script>
 {% endblock %}
+
 

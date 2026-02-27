@@ -11,38 +11,93 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import importlib.util
 import os
+import sys
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def load_dotenv(path):
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+        if value and len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        os.environ.setdefault(key, value)
+
+
+load_dotenv(BASE_DIR / ".env")
+
+
+def env_bool(name, default=False):
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    return str(raw_value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def env_csv(name, default=""):
+    raw_value = os.getenv(name, default)
+    return [item.strip() for item in str(raw_value).split(",") if item.strip()]
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-b9$di2u#s8722%0&yfz5uh^8eb5^ep_z9l(o#8n1$0j@%z!)(j'
+SECRET_KEY = os.getenv(
+    "DJANGO_SECRET_KEY",
+    "django-insecure-local-dev-key-change-this-before-production",
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DJANGO_ENV = os.getenv("DJANGO_ENV", "local").strip().lower()
+IS_PRODUCTION = DJANGO_ENV == "production"
+IS_TEST = "test" in sys.argv
 
-ALLOWED_HOSTS = ["127.0.0.1", "localhost", "0.0.0.0", "*"]
-CSRF_TRUSTED_ORIGINS = [
-    "http://127.0.0.1",
-    "http://localhost",
-    "http://0.0.0.0",
-    "https://127.0.0.1",
-    "https://localhost",
-    "https://0.0.0.0",
-    "http://127.0.0.1:8000",
-    "http://localhost:8000",
-    "https://127.0.0.1:8000",
-    "https://localhost:8000",
-]
+default_debug = not IS_PRODUCTION
+DEBUG = env_bool("DJANGO_DEBUG", default_debug)
+
+default_allowed_hosts = ["127.0.0.1", "localhost", "testserver"]
+if DEBUG:
+    default_allowed_hosts.append("0.0.0.0")
+ALLOWED_HOSTS = env_csv("DJANGO_ALLOWED_HOSTS", ",".join(default_allowed_hosts))
+
+default_csrf_origins = []
+if DEBUG:
+    default_csrf_origins = [
+        "http://127.0.0.1",
+        "http://localhost",
+        "http://0.0.0.0",
+        "https://127.0.0.1",
+        "https://localhost",
+        "https://0.0.0.0",
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+        "https://127.0.0.1:8000",
+        "https://localhost:8000",
+    ]
+CSRF_TRUSTED_ORIGINS = env_csv("DJANGO_CSRF_TRUSTED_ORIGINS", ",".join(default_csrf_origins))
 
 # Render dynamic hostname support (e.g. https://your-app.onrender.com)
 RENDER_EXTERNAL_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME", "").strip()
 if RENDER_EXTERNAL_HOSTNAME:
+    if RENDER_EXTERNAL_HOSTNAME not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
     render_origin = f"https://{RENDER_EXTERNAL_HOSTNAME}"
     if render_origin not in CSRF_TRUSTED_ORIGINS:
         CSRF_TRUSTED_ORIGINS.append(render_origin)
@@ -82,6 +137,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'Myapp.context_processors.admin_operational_summary',
             ],
         },
     },
@@ -93,12 +149,39 @@ WSGI_APPLICATION = 'Companywebsite.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+dj_database_url = None
+try:
+    import dj_database_url  # type: ignore
+except ImportError:
+    dj_database_url = None
+
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+if DATABASE_URL and len(DATABASE_URL) >= 2 and DATABASE_URL[0] == DATABASE_URL[-1] and DATABASE_URL[0] in {"'", '"'}:
+    DATABASE_URL = DATABASE_URL[1:-1].strip()
+if DATABASE_URL.lower() in {"none", "null"}:
+    DATABASE_URL = ""
+if DATABASE_URL:
+    if dj_database_url is None:
+        raise RuntimeError("DATABASE_URL tanimli, fakat 'dj-database-url' paketi kurulu degil.")
+    try:
+        DATABASES = {
+            "default": dj_database_url.parse(
+                DATABASE_URL,
+                conn_max_age=int(os.getenv("DATABASE_CONN_MAX_AGE", "600")),
+                ssl_require=env_bool("DATABASE_SSL_REQUIRE", IS_PRODUCTION),
+            )
+        }
+    except ValueError as exc:
+        raise RuntimeError(
+            "DATABASE_URL gecersiz. Render Postgres baglantisini kullanin veya degiskeni bos birakmak yerine tamamen kaldirin."
+        ) from exc
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
     }
-}
 
 
 # Password validation
@@ -123,7 +206,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'tr-tr'
 
 TIME_ZONE = 'UTC'
 
@@ -136,12 +219,19 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 STATICFILES_DIRS=[
 
     os.path.join(BASEDIR, 'static'),
     
     ]
+
+HAS_WHITENOISE = importlib.util.find_spec("whitenoise") is not None
+USE_WHITENOISE = env_bool("USE_WHITENOISE", IS_PRODUCTION) and HAS_WHITENOISE
+if USE_WHITENOISE and "whitenoise.middleware.WhiteNoiseMiddleware" not in MIDDLEWARE:
+    MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
+    STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -157,15 +247,32 @@ CSRF_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_HOST = env_bool("USE_X_FORWARDED_HOST", True)
+SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", (IS_PRODUCTION and not IS_TEST))
+SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "31536000" if IS_PRODUCTION else "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", IS_PRODUCTION)
+SECURE_HSTS_PRELOAD = env_bool("SECURE_HSTS_PRELOAD", IS_PRODUCTION)
+SECURE_CONTENT_TYPE_NOSNIFF = env_bool("SECURE_CONTENT_TYPE_NOSNIFF", True)
+SECURE_REFERRER_POLICY = os.getenv("SECURE_REFERRER_POLICY", "strict-origin-when-cross-origin")
+X_FRAME_OPTIONS = os.getenv("X_FRAME_OPTIONS", "DENY")
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = env_bool("CSRF_COOKIE_HTTPONLY", False)
 
 # Marketplace runtime knobs
 OFFER_EXPIRY_MINUTES = int(os.getenv("OFFER_EXPIRY_MINUTES", "180"))
 OFFER_REMINDER_MINUTES = int(os.getenv("OFFER_REMINDER_MINUTES", "60"))
+APPOINTMENT_PROVIDER_CONFIRM_MINUTES = int(os.getenv("APPOINTMENT_PROVIDER_CONFIRM_MINUTES", "720"))
+APPOINTMENT_CUSTOMER_CONFIRM_MINUTES = int(os.getenv("APPOINTMENT_CUSTOMER_CONFIRM_MINUTES", "720"))
+APPOINTMENT_SLOT_BUFFER_MINUTES = int(os.getenv("APPOINTMENT_SLOT_BUFFER_MINUTES", "45"))
 SMS_WEBHOOK_URL = os.getenv("SMS_WEBHOOK_URL", "")
 SMS_WEBHOOK_TOKEN = os.getenv("SMS_WEBHOOK_TOKEN", "")
 SMS_DEBUG_FALLBACK = os.getenv("SMS_DEBUG_FALLBACK", "1") not in {"0", "false", "False"}
 
-# Credit economy
-INITIAL_PROVIDER_CREDITS = int(os.getenv("INITIAL_PROVIDER_CREDITS", "10"))
-QUOTE_CREDIT_COST = int(os.getenv("QUOTE_CREDIT_COST", "1"))
+# Reliability
+LOGIN_RATE_LIMIT_MAX_ATTEMPTS = int(os.getenv("LOGIN_RATE_LIMIT_MAX_ATTEMPTS", "15"))
+LOGIN_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", "60"))
+ACTION_RATE_LIMIT_MAX_ATTEMPTS = int(os.getenv("ACTION_RATE_LIMIT_MAX_ATTEMPTS", "40"))
+ACTION_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("ACTION_RATE_LIMIT_WINDOW_SECONDS", "60"))
+POST_IDEMPOTENCY_TTL_SECONDS = int(os.getenv("POST_IDEMPOTENCY_TTL_SECONDS", "10"))
+LIFECYCLE_HEARTBEAT_STALE_SECONDS = int(os.getenv("LIFECYCLE_HEARTBEAT_STALE_SECONDS", "180"))
+LIFECYCLE_LOCK_TTL_SECONDS = int(os.getenv("LIFECYCLE_LOCK_TTL_SECONDS", "120"))

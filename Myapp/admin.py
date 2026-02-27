@@ -1,19 +1,25 @@
 from django import forms
 from django.contrib import admin
 from django.contrib import messages
+from django.conf import settings
+from django.utils import timezone
+from datetime import timedelta
 
 from .constants import NC_CITY_CHOICES, NC_DISTRICT_CHOICES
 from .models import (
-    CreditTransaction,
     CustomerProfile,
+    EscrowPayment,
+    IdempotencyRecord,
     Provider,
-    ProviderWallet,
+    ProviderAvailabilitySlot,
     ProviderOffer,
     ProviderRating,
+    SchedulerHeartbeat,
     ServiceAppointment,
     ServiceMessage,
     ServiceRequest,
     ServiceType,
+    WorkflowEvent,
 )
 
 
@@ -90,9 +96,11 @@ class ProviderAdmin(admin.ModelAdmin):
         "latitude",
         "longitude",
         "is_available",
+        "is_verified",
+        "verified_at",
         "rating",
     )
-    list_filter = ("service_types", "city", "is_available")
+    list_filter = ("service_types", "city", "is_available", "is_verified")
     search_fields = ("full_name", "user__username", "city", "district", "phone", "service_types__name")
     filter_horizontal = ("service_types",)
 
@@ -159,6 +167,30 @@ class ServiceAppointmentAdmin(admin.ModelAdmin):
     search_fields = ("service_request__id", "provider__full_name", "customer__username", "customer_note", "provider_note")
 
 
+@admin.register(ProviderAvailabilitySlot)
+class ProviderAvailabilitySlotAdmin(admin.ModelAdmin):
+    list_display = ("provider", "weekday", "start_time", "end_time", "is_active", "updated_at")
+    list_filter = ("weekday", "is_active", "provider__city")
+    search_fields = ("provider__full_name", "provider__user__username")
+
+
+@admin.register(EscrowPayment)
+class EscrowPaymentAdmin(admin.ModelAdmin):
+    list_display = (
+        "service_request",
+        "customer",
+        "provider",
+        "agreed_amount",
+        "funded_amount",
+        "status",
+        "funded_at",
+        "released_at",
+        "updated_at",
+    )
+    list_filter = ("status", "provider__city")
+    search_fields = ("service_request__id", "customer__username", "provider__full_name", "note")
+
+
 @admin.register(ServiceMessage)
 class ServiceMessageAdmin(admin.ModelAdmin):
     list_display = ("service_request", "sender_user", "sender_role", "created_at", "read_at")
@@ -166,39 +198,115 @@ class ServiceMessageAdmin(admin.ModelAdmin):
     search_fields = ("service_request__id", "sender_user__username", "body")
 
 
-@admin.register(ProviderWallet)
-class ProviderWalletAdmin(admin.ModelAdmin):
-    list_display = ("provider", "balance", "updated_at")
-    search_fields = ("provider__full_name", "provider__user__username")
-    actions = ("add_10_credits", "add_50_credits")
+@admin.register(WorkflowEvent)
+class WorkflowEventAdmin(admin.ModelAdmin):
+    list_display = (
+        "created_at",
+        "target_type",
+        "service_request",
+        "appointment",
+        "from_status",
+        "to_status",
+        "actor_role",
+        "actor_user",
+        "source",
+        "note",
+    )
+    list_filter = ("target_type", "actor_role", "source", "from_status", "to_status", "created_at")
+    search_fields = (
+        "service_request__id",
+        "appointment__id",
+        "actor_user__username",
+        "note",
+    )
+    list_select_related = ("service_request", "appointment", "actor_user")
+    date_hierarchy = "created_at"
+    ordering = ("-created_at", "-id")
+    readonly_fields = (
+        "target_type",
+        "service_request",
+        "appointment",
+        "from_status",
+        "to_status",
+        "actor_user",
+        "actor_role",
+        "source",
+        "note",
+        "created_at",
+    )
 
-    @admin.action(description="+10 kredi yükle")
-    def add_10_credits(self, request, queryset):
-        self._bulk_credit_load(request, queryset, 10)
+    def has_add_permission(self, request):
+        return False
 
-    @admin.action(description="+50 kredi yükle")
-    def add_50_credits(self, request, queryset):
-        self._bulk_credit_load(request, queryset, 50)
+    def has_change_permission(self, request, obj=None):
+        return False
 
-    def _bulk_credit_load(self, request, queryset, credit_amount):
-        updated_count = 0
-        for wallet in queryset.select_related("provider"):
-            wallet.balance += credit_amount
-            wallet.save(update_fields=["balance", "updated_at"])
-            CreditTransaction.objects.create(
-                provider=wallet.provider,
-                wallet=wallet,
-                transaction_type="admin_load",
-                amount=credit_amount,
-                balance_after=wallet.balance,
-                note=f"Admin panelinden +{credit_amount} kredi yüklendi.",
-            )
-            updated_count += 1
-        self.message_user(request, f"{updated_count} cüzdana kredi yüklendi.", level=messages.SUCCESS)
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
-@admin.register(CreditTransaction)
-class CreditTransactionAdmin(admin.ModelAdmin):
-    list_display = ("created_at", "provider", "transaction_type", "amount", "balance_after", "reference_offer")
-    list_filter = ("transaction_type", "provider__city")
-    search_fields = ("provider__full_name", "provider__user__username", "note", "reference_offer__service_request__id")
+@admin.register(IdempotencyRecord)
+class IdempotencyRecordAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "scope", "endpoint", "user", "key_short")
+    list_filter = ("scope", "created_at")
+    search_fields = ("scope", "endpoint", "user__username", "key")
+    date_hierarchy = "created_at"
+    ordering = ("-created_at", "-id")
+    readonly_fields = ("key", "scope", "endpoint", "user", "created_at")
+    actions = ("purge_records_older_than_2_days",)
+
+    @admin.display(description="Anahtar")
+    def key_short(self, obj):
+        return f"{obj.key[:12]}..."
+
+    @admin.action(description="2 günden eski kayıtları temizle")
+    def purge_records_older_than_2_days(self, request, queryset):
+        cutoff = timezone.now() - timedelta(days=2)
+        deleted_count, _ = IdempotencyRecord.objects.filter(created_at__lt=cutoff).delete()
+        self.message_user(request, f"{deleted_count} idempotency kaydı temizlendi.", level=messages.SUCCESS)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(SchedulerHeartbeat)
+class SchedulerHeartbeatAdmin(admin.ModelAdmin):
+    list_display = (
+        "worker_name",
+        "run_count",
+        "last_started_at",
+        "last_success_at",
+        "last_error_at",
+        "healthy",
+        "updated_at",
+    )
+    list_filter = ("updated_at", "last_error_at")
+    search_fields = ("worker_name", "last_error")
+    ordering = ("worker_name",)
+    readonly_fields = (
+        "worker_name",
+        "run_count",
+        "last_started_at",
+        "last_success_at",
+        "last_error_at",
+        "last_error",
+        "updated_at",
+    )
+
+    @admin.display(boolean=True, description="Sağlıklı")
+    def healthy(self, obj):
+        stale_after = max(10, int(getattr(settings, "LIFECYCLE_HEARTBEAT_STALE_SECONDS", 180)))
+        reference_at = obj.last_success_at or obj.last_started_at or obj.updated_at
+        if not reference_at:
+            return False
+        age_seconds = (timezone.now() - reference_at).total_seconds()
+        return age_seconds <= stale_after
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False

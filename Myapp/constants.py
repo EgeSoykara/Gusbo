@@ -1,42 +1,42 @@
 NC_CITY_DISTRICT_MAP = {
-    "Lefkosa": [
-        "Hamitkoy",
+    "Lefkoşa": [
+        "Hamitköy",
         "Kumsal",
-        "Ortakoy",
-        "Gonyeli",
+        "Örtaköy",
+        "Gönyeli",
         "Metehan",
     ],
     "Girne": [
         "Karakum",
-        "Ozankoy",
-        "Catalkoy",
+        "Özanköy",
+        "Çatalköy",
         "Alsancak",
         "Lapta",
     ],
-    "Gazimagusa": [
-        "Surlarici",
+    "Gazimağusa": [
+        "Suriçi",
         "Tuzla",
         "Karakol",
-        "Dogu Akdeniz",
-        "Maras",
+        "Doğu Akdeniz",
+        "Maraş",
     ],
-    "Guzelyurt": [
+    "Güzelyurt": [
         "Merkez",
-        "Bostanci",
+        "Bostancı",
         "Yayla",
-        "Aydinkoy",
+        "Aydınköy",
     ],
-    "Iskele": [
+    "İskele": [
         "Merkez",
         "Long Beach",
-        "Bogaz",
-        "Mehmetcik",
+        "Boğaz",
+        "Mehmetçik",
     ],
     "Lefke": [
         "Merkez",
-        "Gemikonagi",
+        "Gemikonağı",
         "Yedidalga",
-        "Cengizkoy",
+        "Cengizköy",
     ],
 }
 

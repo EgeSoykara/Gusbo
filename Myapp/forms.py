@@ -1,4 +1,8 @@
+from datetime import timedelta
+import unicodedata
+
 from django import forms
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm, UserCreationForm
 from django.contrib.auth.models import User
@@ -8,6 +12,7 @@ from .constants import NC_CITY_CHOICES, NC_DISTRICT_CHOICES
 from .models import (
     CustomerProfile,
     Provider,
+    ProviderAvailabilitySlot,
     ProviderRating,
     ServiceAppointment,
     ServiceMessage,
@@ -46,6 +51,28 @@ def normalize_phone_value(raw_value):
     return digits
 
 
+def normalize_choice_value(raw_value):
+    value = str(raw_value or "").strip().lower()
+    if not value:
+        return ""
+    normalized = unicodedata.normalize("NFKD", value)
+    without_marks = "".join(char for char in normalized if not unicodedata.combining(char))
+    return "".join(char for char in without_marks if char.isalnum())
+
+
+class FlexibleChoiceField(forms.ChoiceField):
+    def valid_value(self, value):
+        if super().valid_value(value):
+            return True
+        normalized_value = normalize_choice_value(value)
+        if not normalized_value:
+            return False
+        for key, _label in self.choices:
+            if normalize_choice_value(key) == normalized_value:
+                return True
+        return False
+
+
 class ServiceSearchForm(forms.Form):
     service_type = forms.ModelChoiceField(
         queryset=ServiceType.objects.all(),
@@ -53,15 +80,15 @@ class ServiceSearchForm(forms.Form):
         required=False,
         label="Hizmet",
     )
-    city = forms.ChoiceField(choices=[("", "Şehir seçin")] + NC_CITY_CHOICES, required=False, label="Şehir")
-    district = forms.ChoiceField(choices=DISTRICT_CHOICES_WITH_ANY, required=False, label="İlçe")
+    city = FlexibleChoiceField(choices=[("", "Şehir seçin")] + NC_CITY_CHOICES, required=False, label="Şehir")
+    district = FlexibleChoiceField(choices=DISTRICT_CHOICES_WITH_ANY, required=False, label="İlçe")
     latitude = forms.FloatField(required=False, widget=forms.HiddenInput())
     longitude = forms.FloatField(required=False, widget=forms.HiddenInput())
 
 
 class ServiceRequestForm(forms.ModelForm):
-    city = forms.ChoiceField(choices=[("", "Şehir seçin")] + NC_CITY_CHOICES, label="Şehir")
-    district = forms.ChoiceField(choices=DISTRICT_CHOICES_WITH_ANY, label="İlçe")
+    city = FlexibleChoiceField(choices=[("", "Şehir seçin")] + NC_CITY_CHOICES, label="Şehir")
+    district = FlexibleChoiceField(choices=DISTRICT_CHOICES_WITH_ANY, label="İlçe")
 
     class Meta:
         model = ServiceRequest
@@ -98,8 +125,8 @@ class CustomerSignupForm(UserCreationForm):
         help_text=PHONE_HELP_TEXT,
         widget=forms.TextInput(attrs=phone_widget_attrs()),
     )
-    city = forms.ChoiceField(choices=[("", "Şehir seçin")] + NC_CITY_CHOICES, required=True, label="Şehir")
-    district = forms.ChoiceField(choices=DISTRICT_CHOICES_WITH_ANY, required=True, label="İlçe")
+    city = FlexibleChoiceField(choices=[("", "Şehir seçin")] + NC_CITY_CHOICES, required=True, label="Şehir")
+    district = FlexibleChoiceField(choices=DISTRICT_CHOICES_WITH_ANY, required=True, label="İlçe")
 
     class Meta:
         model = User
@@ -148,13 +175,17 @@ class ProviderLoginForm(AuthenticationForm):
 
     def confirm_login_allowed(self, user):
         super().confirm_login_allowed(user)
-        if not Provider.objects.filter(user=user).exists():
+        provider = Provider.objects.filter(user=user).first()
+        if not provider:
             raise ValidationError(
                 "Bu hesap usta olarak tanımlı değil.",
                 code="invalid_login",
             )
-
-
+        if not provider.is_verified:
+            raise ValidationError(
+                "Usta hesabınız admin onayı bekliyor. Onaydan sonra giriş yapabilirsiniz.",
+                code="inactive",
+            )
 class ProviderSignupForm(UserCreationForm):
     full_name = forms.CharField(max_length=120, required=True, label="Ad Soyad")
     email = forms.EmailField(required=True, label="E-posta")
@@ -165,8 +196,8 @@ class ProviderSignupForm(UserCreationForm):
         help_text=PHONE_HELP_TEXT,
         widget=forms.TextInput(attrs=phone_widget_attrs()),
     )
-    city = forms.ChoiceField(choices=[("", "Şehir seçin")] + NC_CITY_CHOICES, required=True, label="Şehir")
-    district = forms.ChoiceField(choices=[("", "İlçe seçin")] + NC_DISTRICT_CHOICES, required=True, label="İlçe")
+    city = FlexibleChoiceField(choices=[("", "Şehir seçin")] + NC_CITY_CHOICES, required=True, label="Şehir")
+    district = FlexibleChoiceField(choices=[("", "İlçe seçin")] + NC_DISTRICT_CHOICES, required=True, label="İlçe")
     service_types = forms.ModelMultipleChoiceField(
         queryset=ServiceType.objects.all(),
         required=True,
@@ -210,6 +241,7 @@ class ProviderSignupForm(UserCreationForm):
                 district=self.cleaned_data["district"],
                 phone=self.cleaned_data["phone"],
                 description=self.cleaned_data.get("description", "").strip(),
+                is_verified=False,
                 is_available=True,
             )
             provider.service_types.set(self.cleaned_data["service_types"])
@@ -220,8 +252,8 @@ class ProviderSignupForm(UserCreationForm):
 
 
 class ProviderProfileForm(forms.ModelForm):
-    city = forms.ChoiceField(choices=NC_CITY_CHOICES, required=True, label="Şehir")
-    district = forms.ChoiceField(choices=NC_DISTRICT_CHOICES, required=True, label="İlçe")
+    city = FlexibleChoiceField(choices=NC_CITY_CHOICES, required=True, label="Şehir")
+    district = FlexibleChoiceField(choices=NC_DISTRICT_CHOICES, required=True, label="İlçe")
     is_available = forms.TypedChoiceField(
         choices=[("True", "Müsait"), ("False", "Müsait Değil")],
         coerce=lambda value: value == "True",
@@ -264,6 +296,50 @@ class ProviderProfileForm(forms.ModelForm):
         return normalize_phone_value(self.cleaned_data.get("phone"))
 
 
+class ProviderAvailabilitySlotForm(forms.ModelForm):
+    class Meta:
+        model = ProviderAvailabilitySlot
+        fields = ["weekday", "start_time", "end_time", "is_active"]
+        labels = {
+            "weekday": "Gun",
+            "start_time": "Baslangic",
+            "end_time": "Bitis",
+            "is_active": "Aktif",
+        }
+        widgets = {
+            "start_time": forms.TimeInput(attrs={"type": "time"}),
+            "end_time": forms.TimeInput(attrs={"type": "time"}),
+        }
+
+    def __init__(self, *args, provider=None, **kwargs):
+        self.provider = provider
+        super().__init__(*args, **kwargs)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        weekday = cleaned_data.get("weekday")
+        start_time = cleaned_data.get("start_time")
+        end_time = cleaned_data.get("end_time")
+        if weekday is None or not start_time or not end_time:
+            return cleaned_data
+
+        if end_time <= start_time:
+            raise ValidationError("Bitis saati baslangic saatinden sonra olmalidir.")
+
+        if self.provider:
+            overlap_qs = ProviderAvailabilitySlot.objects.filter(
+                provider=self.provider,
+                weekday=weekday,
+                start_time__lt=end_time,
+                end_time__gt=start_time,
+            )
+            if self.instance and self.instance.pk:
+                overlap_qs = overlap_qs.exclude(pk=self.instance.pk)
+            if overlap_qs.exists():
+                raise ValidationError("Ayni gunde cakisan bir musaitlik araligi zaten var.")
+        return cleaned_data
+
+
 class AccountIdentityForm(forms.ModelForm):
     class Meta:
         model = User
@@ -277,8 +353,8 @@ class AccountIdentityForm(forms.ModelForm):
 
 
 class CustomerContactSettingsForm(forms.ModelForm):
-    city = forms.ChoiceField(choices=[("", "Şehir seçin")] + NC_CITY_CHOICES, required=True, label="Şehir")
-    district = forms.ChoiceField(choices=DISTRICT_CHOICES_WITH_ANY, required=True, label="İlçe")
+    city = FlexibleChoiceField(choices=[("", "Şehir seçin")] + NC_CITY_CHOICES, required=True, label="Şehir")
+    district = FlexibleChoiceField(choices=DISTRICT_CHOICES_WITH_ANY, required=True, label="İlçe")
 
     class Meta:
         model = CustomerProfile
@@ -298,8 +374,8 @@ class CustomerContactSettingsForm(forms.ModelForm):
 
 
 class ProviderContactSettingsForm(forms.ModelForm):
-    city = forms.ChoiceField(choices=NC_CITY_CHOICES, required=True, label="Şehir")
-    district = forms.ChoiceField(choices=NC_DISTRICT_CHOICES, required=True, label="İlçe")
+    city = FlexibleChoiceField(choices=NC_CITY_CHOICES, required=True, label="Şehir")
+    district = FlexibleChoiceField(choices=NC_DISTRICT_CHOICES, required=True, label="İlçe")
 
     class Meta:
         model = Provider
@@ -339,9 +415,28 @@ class ProviderRatingForm(forms.ModelForm):
 
 
 class AppointmentCreateForm(forms.ModelForm):
+    QUICK_TIME_CHOICES = (
+        ("", "Detayli tarih sec"),
+        ("now", "Simdi"),
+        ("30m", "30 dakika sonra"),
+        ("1h", "1 saat sonra"),
+        ("2h", "2 saat sonra"),
+    )
+    QUICK_TIME_MINUTES = {
+        "now": 1,
+        "30m": 30,
+        "1h": 60,
+        "2h": 120,
+    }
+    appointment_preset = forms.ChoiceField(
+        choices=QUICK_TIME_CHOICES,
+        required=False,
+        label="Hizli Secim",
+    )
     scheduled_for = forms.DateTimeField(
         input_formats=["%Y-%m-%dT%H:%M"],
         label="Randevu Tarih/Saat",
+        required=False,
         widget=forms.DateTimeInput(attrs={"type": "datetime-local"}),
     )
 
@@ -352,18 +447,62 @@ class AppointmentCreateForm(forms.ModelForm):
             "customer_note": "Randevu Notu",
         }
         widgets = {
-            "customer_note": forms.Textarea(attrs={"rows": 2, "placeholder": "İsteğe bağlı kısa not"}),
+            "customer_note": forms.Textarea(attrs={"rows": 2, "placeholder": "Istege bagli kisa not"}),
         }
 
     def __init__(self, *args, **kwargs):
+        self.provider = kwargs.pop("provider", None)
+        self.current_appointment_id = kwargs.pop("current_appointment_id", None)
         super().__init__(*args, **kwargs)
-        min_dt = timezone.localtime(timezone.now()).strftime("%Y-%m-%dT%H:%M")
+        min_dt = timezone.localtime(timezone.now() + timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M")
         self.fields["scheduled_for"].widget.attrs["min"] = min_dt
 
+    def _validate_provider_availability(self, scheduled_for):
+        if not self.provider:
+            return
+
+        if not self.provider.is_available:
+            raise ValidationError("Secilen usta su an musait degil.")
+
+        local_dt = timezone.localtime(scheduled_for)
+        weekday = local_dt.weekday()
+        time_value = local_dt.time()
+        active_slots = self.provider.availability_slots.filter(is_active=True)
+        if active_slots.exists():
+            day_slots = active_slots.filter(weekday=weekday)
+            has_slot_match = any(slot.start_time <= time_value < slot.end_time for slot in day_slots)
+            if not has_slot_match:
+                raise ValidationError("Secilen saat ustanin tanimli musaitlik araliginda degil.")
+
+        buffer_minutes = max(5, int(getattr(settings, "APPOINTMENT_SLOT_BUFFER_MINUTES", 45)))
+        range_start = scheduled_for - timedelta(minutes=buffer_minutes)
+        range_end = scheduled_for + timedelta(minutes=buffer_minutes)
+        conflict_qs = ServiceAppointment.objects.filter(
+            provider=self.provider,
+            status__in=["pending", "pending_customer", "confirmed"],
+            scheduled_for__gte=range_start,
+            scheduled_for__lte=range_end,
+        )
+        if self.current_appointment_id:
+            conflict_qs = conflict_qs.exclude(id=self.current_appointment_id)
+        if conflict_qs.exists():
+            raise ValidationError("Bu saat dolu. Lutfen baska bir zaman secin.")
+
     def clean_scheduled_for(self):
-        scheduled_for = self.cleaned_data["scheduled_for"]
+        scheduled_for = self.cleaned_data.get("scheduled_for")
+        preset = (self.data.get("appointment_preset") or "").strip()
+        if preset:
+            minutes = self.QUICK_TIME_MINUTES.get(preset)
+            if minutes is None:
+                raise ValidationError("Gecersiz hizli tarih secimi.")
+            scheduled_for = timezone.now() + timedelta(minutes=minutes)
+            self.cleaned_data["scheduled_for"] = scheduled_for
+
+        if not scheduled_for:
+            raise ValidationError("Randevu zamani secmelisiniz.")
         if scheduled_for <= timezone.now():
-            raise ValidationError("Randevu zamanı şimdiki zamandan ileri olmalıdır.")
+            raise ValidationError("Randevu zamani simdiki zamandan ileri olmali.")
+        self._validate_provider_availability(scheduled_for)
         return scheduled_for
 
 
@@ -385,3 +524,5 @@ class ServiceMessageForm(forms.ModelForm):
         if len(body) < 2:
             raise ValidationError("Mesaj en az 2 karakter olmalı.")
         return body
+
+
