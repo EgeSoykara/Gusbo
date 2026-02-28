@@ -51,6 +51,16 @@
             <a class="nav-link {% if request.path == '/taleplerim/' %}active{% endif %}" href="{% url 'my_requests' %}" data-live-customer-nav><i class="bi bi-kanban me-1"></i>Taleplerim</a>
             <a class="nav-link {% if request.path == '/anlasmalar/' %}active{% endif %}" href="{% url 'agreement_history' %}"><i class="bi bi-journal-check me-1"></i>Anlaşmalar</a>
           {% endif %}
+          {% if request.user.is_authenticated %}
+            <a class="nav-link nav-notification-link {% if request.path == '/bildirimler/' %}active{% endif %}" href="{% url 'notifications' %}">
+              <i class="bi bi-bell me-1"></i>Bildirimler
+              {% if nav_unread_notifications_count %}
+                <span class="nav-live-badge">
+                  {% if nav_unread_notifications_count > 99 %}99+{% else %}{{ nav_unread_notifications_count }}{% endif %}
+                </span>
+              {% endif %}
+            </a>
+          {% endif %}
           <a class="nav-link {% if request.path == '/contact/' %}active{% endif %}" href="{% url 'contact' %}"><i class="bi bi-chat-dots me-1"></i>İletişim</a>
         </div>
 

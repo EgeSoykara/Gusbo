@@ -138,6 +138,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'Myapp.context_processors.admin_operational_summary',
+                'Myapp.context_processors.user_notifications_summary',
             ],
         },
     },
@@ -276,3 +277,4 @@ ACTION_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("ACTION_RATE_LIMIT_WINDOW_SECON
 POST_IDEMPOTENCY_TTL_SECONDS = int(os.getenv("POST_IDEMPOTENCY_TTL_SECONDS", "10"))
 LIFECYCLE_HEARTBEAT_STALE_SECONDS = int(os.getenv("LIFECYCLE_HEARTBEAT_STALE_SECONDS", "180"))
 LIFECYCLE_LOCK_TTL_SECONDS = int(os.getenv("LIFECYCLE_LOCK_TTL_SECONDS", "120"))
+NOTIFICATION_RETENTION_DAYS = int(os.getenv("NOTIFICATION_RETENTION_DAYS", "60"))
