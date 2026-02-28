@@ -3098,7 +3098,7 @@ body {
 
 .provider-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -3130,6 +3130,47 @@ body {
   margin-top: 4px;
   font-size: 0.84rem;
   color: #64748b;
+}
+
+.provider-flow-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.25px;
+  border: 1px solid transparent;
+}
+
+.provider-flow-warning {
+  color: #7c2d12;
+  background: rgba(245, 158, 11, 0.13);
+  border-color: rgba(245, 158, 11, 0.34);
+}
+
+.provider-flow-action {
+  color: #155e75;
+  background: rgba(14, 116, 144, 0.11);
+  border-color: rgba(14, 116, 144, 0.3);
+}
+
+.provider-flow-info {
+  color: #0f766e;
+  background: rgba(20, 184, 166, 0.12);
+  border-color: rgba(20, 184, 166, 0.3);
+}
+
+.provider-flow-success {
+  color: #14532d;
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.provider-flow-neutral {
+  color: #334155;
+  background: rgba(148, 163, 184, 0.14);
+  border-color: rgba(148, 163, 184, 0.33);
 }
 
 .provider-requests-section .request-table thead th {
@@ -3185,6 +3226,36 @@ body {
 
 [data-theme="dark"] .provider-kpi-note {
   color: #94a3b8;
+}
+
+[data-theme="dark"] .provider-flow-warning {
+  color: #fde68a;
+  background: rgba(180, 83, 9, 0.3);
+  border-color: rgba(251, 191, 36, 0.38);
+}
+
+[data-theme="dark"] .provider-flow-action {
+  color: #bae6fd;
+  background: rgba(14, 116, 144, 0.3);
+  border-color: rgba(56, 189, 248, 0.38);
+}
+
+[data-theme="dark"] .provider-flow-info {
+  color: #99f6e4;
+  background: rgba(13, 148, 136, 0.28);
+  border-color: rgba(45, 212, 191, 0.4);
+}
+
+[data-theme="dark"] .provider-flow-success {
+  color: #dcfce7;
+  background: rgba(22, 163, 74, 0.26);
+  border-color: rgba(74, 222, 128, 0.4);
+}
+
+[data-theme="dark"] .provider-flow-neutral {
+  color: #e2e8f0;
+  background: rgba(51, 65, 85, 0.45);
+  border-color: rgba(148, 163, 184, 0.4);
 }
 
 .provider-actions {
@@ -3246,6 +3317,12 @@ body {
   border-color: rgba(148, 163, 184, 0.45);
   background: rgba(15, 23, 42, 0.82);
   color: #e2e8f0;
+}
+
+@media (max-width: 991px) {
+  .provider-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 767px) {
