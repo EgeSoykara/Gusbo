@@ -115,7 +115,7 @@
     const updateIcon = function () {
       const isDark = root.getAttribute("data-theme") === "dark";
       btn.innerHTML = isDark
-         '<i class="bi bi-brightness-high-fill"></i>'
+        ? '<i class="bi bi-brightness-high-fill"></i>'
         : '<i class="bi bi-moon-stars-fill"></i>';
     };
 

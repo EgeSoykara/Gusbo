@@ -2502,6 +2502,160 @@ body {
   }
 }
 
+.request-mobile-toggle {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .my-requests-section .card-body {
+    padding: 1rem !important;
+  }
+
+  .my-requests-section .my-requests-toolbar {
+    width: 100%;
+    align-items: stretch !important;
+    gap: 0.5rem !important;
+  }
+
+  .my-requests-section .my-requests-toolbar > a,
+  .my-requests-section .my-requests-toolbar > form {
+    flex: 1 1 calc(50% - 0.5rem);
+    min-width: 0;
+  }
+
+  .my-requests-section .my-requests-toolbar > a.btn,
+  .my-requests-section .my-requests-toolbar > form .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .my-requests-section .table-responsive {
+    overflow: visible;
+  }
+
+  .my-requests-section .request-table {
+    min-width: 0;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .my-requests-section .request-table thead {
+    display: none;
+  }
+
+  .my-requests-section .request-table tbody,
+  .my-requests-section .request-table tr,
+  .my-requests-section .request-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .my-requests-section .request-table tr {
+    margin-bottom: 0.85rem;
+    border: 1px solid #d9e2ec;
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 5px 14px rgba(15, 23, 42, 0.06);
+    overflow: hidden;
+  }
+
+  .my-requests-section .request-table tbody td {
+    border-bottom: 1px dashed #e2e8f0;
+    padding: 0.62rem 0.75rem;
+    display: grid;
+    grid-template-columns: minmax(92px, 34%) minmax(0, 1fr);
+    gap: 0.55rem;
+    align-items: start;
+  }
+
+  .my-requests-section .request-table tbody td:last-child {
+    border-bottom: 0;
+  }
+
+.my-requests-section .request-table tbody td::before {
+  content: attr(data-label);
+  font-size: 0.66rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.45px;
+  color: #64748b;
+  padding-top: 0.12rem;
+}
+
+  .my-requests-section .request-actions-stack,
+  .my-requests-section .request-rate-form {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .my-requests-section .request-rate-row {
+    grid-template-columns: 1fr;
+  }
+
+  .my-requests-section .offer-select-head {
+    gap: 0.45rem;
+  }
+
+  .my-requests-section .offer-select-head strong {
+    width: 100%;
+  }
+
+  .my-requests-section .request-action-collapse > summary {
+    padding: 0.7rem 0.72rem;
+  }
+
+  .my-requests-section .request-status-mobile-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.55rem;
+  }
+
+  .my-requests-section .request-mobile-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    padding: 0.22rem 0.68rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1.2;
+    background: #f8fafc;
+    color: #334155;
+    white-space: nowrap;
+  }
+
+  .my-requests-section .request-mobile-toggle:active {
+    transform: translateY(1px);
+  }
+
+  .my-requests-section .request-row-card:not(.mobile-expanded) td[data-label="Randevu"],
+  .my-requests-section .request-row-card:not(.mobile-expanded) td[data-label="İşlemler"] {
+    display: none;
+  }
+}
+
+[data-theme="dark"] .my-requests-section .request-table tr {
+  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.85);
+  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.32);
+}
+
+[data-theme="dark"] .my-requests-section .request-table tbody td {
+  border-bottom-color: rgba(148, 163, 184, 0.25);
+}
+
+[data-theme="dark"] .my-requests-section .request-table tbody td::before {
+  color: #94a3b8;
+}
+
+[data-theme="dark"] .my-requests-section .request-mobile-toggle {
+  border-color: rgba(148, 163, 184, 0.45);
+  background: rgba(30, 41, 59, 0.92);
+  color: #e2e8f0;
+}
+
 .provider-actions {
   display: flex;
   flex-wrap: wrap;
