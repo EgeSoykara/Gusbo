@@ -366,6 +366,19 @@ class SchedulerLock(models.Model):
         return f"{self.worker_name} lock"
 
 
+class NotificationCursor(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="notification_cursor")
+    workflow_seen_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"{self.user.username} cursor"
+
+
 class ProviderAvailabilitySlot(models.Model):
     WEEKDAY_CHOICES = (
         (0, "Pazartesi"),
@@ -395,4 +408,3 @@ class ProviderAvailabilitySlot(models.Model):
     def clean(self):
         if self.end_time <= self.start_time:
             raise ValidationError("Bitis saati baslangic saatinden sonra olmalidir.")
-

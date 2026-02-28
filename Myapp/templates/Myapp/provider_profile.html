@@ -1,10 +1,10 @@
 ﻿{% extends "base.html" %}
 {% block content %}
-<section class="card panel-card shadow-sm reveal-up mb-4">
+<section class="card panel-card provider-profile-section shadow-sm reveal-up mb-4">
   <div class="card-body p-4">
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
       <h1 class="h4 mb-0"><i class="bi bi-person-vcard-fill me-2"></i>Usta Profili</h1>
-      <div class="d-flex align-items-center flex-wrap gap-2">
+      <div class="d-flex align-items-center flex-wrap gap-2 provider-profile-toolbar">
         <a href="{% url 'account_settings' %}" class="btn btn-outline-secondary">
           <i class="bi bi-gear me-1"></i>Hesap Ayarları
         </a>
@@ -27,7 +27,7 @@
   </div>
 </section>
 
-<section class="auth-wrap reveal-up">
+<section class="auth-wrap reveal-up provider-profile-section">
   <div class="card panel-card auth-card shadow-sm">
     <div class="card-body p-4 p-md-5">
       <form method="post" class="row g-3">
@@ -108,10 +108,10 @@
   </div>
 </section>
 
-<section class="card panel-card shadow-sm reveal-up mt-4">
+<section class="card panel-card provider-profile-section shadow-sm reveal-up mt-4">
   <div class="card-body p-4">
     <h2 class="h5 mb-3"><i class="bi bi-calendar-week me-2"></i>Haftalik Musaitlik</h2>
-    <form method="post" class="row g-2 align-items-end mb-3">
+    <form method="post" class="row g-2 align-items-end mb-3 provider-availability-form">
       {% csrf_token %}
       <input type="hidden" name="slot_action" value="add">
       <div class="col-md-3">
@@ -157,17 +157,17 @@
           <tbody>
             {% for slot in availability_slots %}
               <tr>
-                <td>{{ slot.get_weekday_display }}</td>
-                <td>{{ slot.start_time|time:"H:i" }}</td>
-                <td>{{ slot.end_time|time:"H:i" }}</td>
-                <td>
+                <td data-label="Gün">{{ slot.get_weekday_display }}</td>
+                <td data-label="Başlangıç">{{ slot.start_time|time:"H:i" }}</td>
+                <td data-label="Bitiş">{{ slot.end_time|time:"H:i" }}</td>
+                <td data-label="Durum">
                   {% if slot.is_active %}
                     <span class="status-pill status-completed">Aktif</span>
                   {% else %}
                     <span class="status-pill status-cancelled">Pasif</span>
                   {% endif %}
                 </td>
-                <td>
+                <td data-label="İşlem">
                   <form method="post" class="m-0">
                     {% csrf_token %}
                     <input type="hidden" name="slot_action" value="delete">

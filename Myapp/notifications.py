@@ -1,112 +1,167 @@
-import base64
-import hashlib
-import hmac
-import logging
-from urllib import error, parse, request
+﻿from datetime import timedelta
 
 from django.conf import settings
+from django.db.models import Q
+from django.urls import reverse
+from django.utils import timezone
 
-logger = logging.getLogger(__name__)
-
-
-def normalize_phone_for_whatsapp(raw_phone, default_country_code="+90"):
-    if not raw_phone:
-        return None
-
-    phone = "".join(ch for ch in str(raw_phone) if ch.isdigit() or ch == "+")
-    if phone.startswith("00"):
-        phone = "+" + phone[2:]
-    elif phone.startswith("0"):
-        phone = f"{default_country_code}{phone[1:]}"
-    elif not phone.startswith("+"):
-        phone = f"{default_country_code}{phone}"
-
-    if not phone.startswith("+") or len(phone) < 8:
-        return None
-    return phone
+from .models import NotificationCursor, Provider, ServiceAppointment, ServiceMessage, ServiceRequest, WorkflowEvent
 
 
-def send_whatsapp_via_twilio(to_phone, body):
-    if not settings.WHATSAPP_NOTIFICATIONS_ENABLED:
-        return {"attempted": False, "sent": False, "detail": "notifications-disabled"}
+REQUEST_STATUS_LABELS = dict(ServiceRequest.STATUS_CHOICES)
+APPOINTMENT_STATUS_LABELS = dict(ServiceAppointment.STATUS_CHOICES)
 
-    account_sid = settings.TWILIO_ACCOUNT_SID
-    auth_token = settings.TWILIO_AUTH_TOKEN
-    from_whatsapp = settings.TWILIO_WHATSAPP_FROM
-    if not account_sid or not auth_token or not from_whatsapp:
-        return {"attempted": False, "sent": False, "detail": "missing-twilio-config"}
 
-    to_e164 = normalize_phone_for_whatsapp(to_phone, settings.WHATSAPP_DEFAULT_COUNTRY_CODE)
-    if not to_e164:
-        return {"attempted": False, "sent": False, "detail": "invalid-phone"}
+def _truncate(text, max_len=180):
+    value = str(text or "").strip()
+    if len(value) <= max_len:
+        return value
+    return value[: max_len - 1].rstrip() + "…"
 
-    endpoint = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
-    payload = parse.urlencode(
-        {
-            "From": f"whatsapp:{from_whatsapp}",
-            "To": f"whatsapp:{to_e164}",
-            "Body": body,
-        }
-    ).encode("utf-8")
-    auth_header = base64.b64encode(f"{account_sid}:{auth_token}".encode("utf-8")).decode("utf-8")
 
-    req = request.Request(endpoint, data=payload, method="POST")
-    req.add_header("Authorization", f"Basic {auth_header}")
-    req.add_header("Content-Type", "application/x-www-form-urlencoded")
-
+def get_notification_retention_days():
     try:
-        with request.urlopen(req, timeout=settings.WHATSAPP_REQUEST_TIMEOUT_SEC) as resp:
-            if 200 <= resp.status < 300:
-                return {"attempted": True, "sent": True, "detail": "sent"}
-            return {"attempted": True, "sent": False, "detail": f"http-{resp.status}"}
-    except error.HTTPError as exc:
-        logger.warning("Twilio WhatsApp HTTP error: %s", exc)
-        return {"attempted": True, "sent": False, "detail": f"http-error-{exc.code}"}
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Twilio WhatsApp send failed: %s", exc)
-        return {"attempted": True, "sent": False, "detail": "send-failed"}
+        configured = int(getattr(settings, "NOTIFICATION_RETENTION_DAYS", 60))
+    except (TypeError, ValueError):
+        configured = 60
+    return max(7, configured)
 
 
-def strip_whatsapp_prefix(value):
-    if value and value.lower().startswith("whatsapp:"):
-        return value.split(":", 1)[1]
-    return value
+def get_notification_cutoff(now=None):
+    reference = now or timezone.now()
+    return reference - timedelta(days=get_notification_retention_days())
 
 
-def build_twilio_signature(url, payload_items, auth_token):
-    signing_data = url
-    for key in sorted(payload_items.keys()):
-        values = payload_items.getlist(key) if hasattr(payload_items, "getlist") else [payload_items[key]]
-        for value in values:
-            signing_data += f"{key}{value}"
-
-    digest = hmac.new(
-        auth_token.encode("utf-8"),
-        signing_data.encode("utf-8"),
-        hashlib.sha1,
-    ).digest()
-    return base64.b64encode(digest).decode("utf-8")
+def get_provider_for_user(user):
+    if not user or not getattr(user, "is_authenticated", False):
+        return None
+    return Provider.objects.filter(user=user).only("id").first()
 
 
-def is_valid_twilio_signature(request_obj):
-    auth_token = settings.TWILIO_AUTH_TOKEN
-    incoming_signature = request_obj.META.get("HTTP_X_TWILIO_SIGNATURE", "")
-    if not auth_token or not incoming_signature:
-        return False
-
-    request_url = request_obj.build_absolute_uri()
-    expected = build_twilio_signature(request_url, request_obj.POST, auth_token)
-    return hmac.compare_digest(expected, incoming_signature)
+def get_notification_cursor(user):
+    cursor, _created = NotificationCursor.objects.get_or_create(user=user, defaults={"workflow_seen_at": None})
+    return cursor
 
 
-def send_provider_offer_notification(provider, service_request, token):
-    message = (
-        f"Yeni is talebi var.\n"
-        f"Hizmet: {service_request.service_type.name}\n"
-        f"Konum: {service_request.city}/{service_request.district}\n"
-        f"Musteri: {service_request.customer_name} - {service_request.customer_phone}\n"
-        f"Detay: {service_request.details[:180]}\n\n"
-        f"Kabul icin: KABUL {token}\n"
-        f"Reddetmek icin: RED {token}"
+def get_incoming_message_queryset(user, provider=None, now=None):
+    cutoff = get_notification_cutoff(now)
+    if provider:
+        return ServiceMessage.objects.filter(
+            service_request__matched_provider=provider,
+            service_request__matched_offer__isnull=False,
+            service_request__matched_offer__provider=provider,
+            service_request__status="matched",
+            created_at__gte=cutoff,
+        ).exclude(sender_role="provider")
+    return ServiceMessage.objects.filter(
+        service_request__customer=user,
+        service_request__matched_offer__isnull=False,
+        service_request__status="matched",
+        created_at__gte=cutoff,
+    ).exclude(sender_role="customer")
+
+
+def get_workflow_event_queryset(user, provider=None, now=None):
+    cutoff = get_notification_cutoff(now)
+    if provider:
+        return WorkflowEvent.objects.filter(
+            Q(service_request__matched_provider=provider) | Q(appointment__provider=provider),
+            created_at__gte=cutoff,
+        )
+    return WorkflowEvent.objects.filter(service_request__customer=user, created_at__gte=cutoff)
+
+
+def get_total_unread_notifications_count(user):
+    if not user or not getattr(user, "is_authenticated", False):
+        return 0
+
+    now = timezone.now()
+    provider = get_provider_for_user(user)
+    cursor = get_notification_cursor(user)
+
+    unread_messages_count = get_incoming_message_queryset(user, provider=provider, now=now).filter(read_at__isnull=True).count()
+    workflow_qs = get_workflow_event_queryset(user, provider=provider, now=now).exclude(actor_user=user)
+    if cursor.workflow_seen_at:
+        workflow_qs = workflow_qs.filter(created_at__gt=cursor.workflow_seen_at)
+    unread_workflow_count = workflow_qs.count()
+    return unread_messages_count + unread_workflow_count
+
+
+def mark_all_notifications_read(user):
+    if not user or not getattr(user, "is_authenticated", False):
+        return
+
+    provider = get_provider_for_user(user)
+    now = timezone.now()
+
+    get_incoming_message_queryset(user, provider=provider, now=now).filter(read_at__isnull=True).update(read_at=now)
+    cursor = get_notification_cursor(user)
+    cursor.workflow_seen_at = now
+    cursor.save(update_fields=["workflow_seen_at", "updated_at"])
+
+
+def _event_status_label(event, raw_status):
+    if event.target_type == "appointment":
+        return APPOINTMENT_STATUS_LABELS.get(raw_status, raw_status or "-")
+    return REQUEST_STATUS_LABELS.get(raw_status, raw_status or "-")
+
+
+def build_notification_entries(user, *, limit=180):
+    if not user or not getattr(user, "is_authenticated", False):
+        return []
+
+    now = timezone.now()
+    provider = get_provider_for_user(user)
+    cursor = get_notification_cursor(user)
+    workflow_seen_at = cursor.workflow_seen_at
+    panel_url = reverse("provider_requests") if provider else reverse("my_requests")
+
+    entries = []
+
+    messages = list(
+        get_incoming_message_queryset(user, provider=provider, now=now)
+        .select_related("service_request")
+        .order_by("-created_at")[:limit]
     )
-    return send_whatsapp_via_twilio(provider.phone, message)
+    for item in messages:
+        entries.append(
+            {
+                "entry_id": f"msg-{item.id}",
+                "kind": "message",
+                "category": "Mesaj",
+                "title": f"Talep #{item.service_request_id} için yeni mesaj",
+                "body": _truncate(item.body, 220),
+                "link": reverse("request_messages", args=[item.service_request_id]),
+                "created_at": item.created_at,
+                "is_unread": item.read_at is None,
+            }
+        )
+
+    events = list(
+        get_workflow_event_queryset(user, provider=provider, now=now)
+        .select_related("service_request", "appointment", "actor_user")
+        .order_by("-created_at")[:limit]
+    )
+    for event in events:
+        to_label = _event_status_label(event, event.to_status)
+        from_label = _event_status_label(event, event.from_status)
+        target_label = "Randevu" if event.target_type == "appointment" else "Talep"
+        if event.note:
+            body = _truncate(event.note, 220)
+        else:
+            body = f"{from_label} -> {to_label}"
+        entries.append(
+            {
+                "entry_id": f"wf-{event.id}",
+                "kind": "workflow",
+                "category": target_label,
+                "title": f"{target_label} durumu güncellendi: {to_label}",
+                "body": body,
+                "link": panel_url,
+                "created_at": event.created_at,
+                "is_unread": bool(event.actor_user_id != user.id and (not workflow_seen_at or event.created_at > workflow_seen_at)),
+            }
+        )
+
+    entries.sort(key=lambda item: item["created_at"], reverse=True)
+    return entries[:limit]

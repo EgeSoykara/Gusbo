@@ -39,6 +39,7 @@ from .forms import (
     ServiceSearchForm,
     ServiceMessageForm,
 )
+from .notifications import build_notification_entries, get_notification_retention_days, mark_all_notifications_read
 from .models import (
     CustomerProfile,
     IdempotencyRecord,
@@ -714,6 +715,131 @@ def build_customer_snapshot_payload(user):
     return snapshot
 
 
+def build_customer_flow_state(service_request, appointment, *, has_accepted_offers=False, now=None):
+    reference_time = now or timezone.now()
+    flow = {
+        "step": "Adım 1/4",
+        "title": "Usta yanıtı bekleniyor",
+        "hint": "Talebiniz uygun ustalara iletildi. Usta dönüşlerini bekleyin.",
+        "next_action": "Şimdilik bekleyin veya isterseniz talebi iptal edin.",
+        "tone": "waiting",
+    }
+    status = service_request.status
+
+    if status == "pending_customer":
+        flow.update(
+            {
+                "step": "Adım 2/4",
+                "title": "Usta seçimi sizde",
+                "hint": "Teklifler geldiyse bir ustayı seçip randevu aşamasına geçin.",
+                "next_action": "Listeden bir ustayı seçin.",
+                "tone": "action",
+            }
+        )
+        if not has_accepted_offers:
+            flow.update(
+                {
+                    "title": "Teklifler hazırlanıyor",
+                    "hint": "Henüz seçilebilir teklif oluşmadı.",
+                    "next_action": "Ustalardan yeni teklif gelmesini bekleyin.",
+                    "tone": "waiting",
+                }
+            )
+        return flow
+
+    if status == "matched":
+        flow.update(
+            {
+                "step": "Adım 3/4",
+                "title": "Usta seçildi",
+                "hint": "Şimdi randevu zamanını belirleyin.",
+                "next_action": "Randevu saati seçip ustaya gönderin.",
+                "tone": "action",
+            }
+        )
+        if not appointment:
+            return flow
+
+        appointment_status = appointment.status
+        if appointment_status == "pending":
+            flow.update(
+                {
+                    "title": "Randevu usta onayında",
+                    "hint": "Randevu talebiniz ustaya iletildi.",
+                    "next_action": "Ustanın randevu onayını bekleyin.",
+                    "tone": "waiting",
+                }
+            )
+        elif appointment_status == "pending_customer":
+            flow.update(
+                {
+                    "title": "Randevu son onay aşamasında",
+                    "hint": "Randevu kaydı müşteri onayı bekliyor.",
+                    "next_action": "Randevu bölümünden onaylayın veya güncelleyin.",
+                    "tone": "action",
+                }
+            )
+        elif appointment_status == "confirmed":
+            is_future = bool(appointment.scheduled_for and appointment.scheduled_for > reference_time)
+            if is_future:
+                flow.update(
+                    {
+                        "title": "Randevu onaylandı",
+                        "hint": "Randevu tarihi netleşti. Saatinde hazır olmanız yeterli.",
+                        "next_action": "Randevu sonrası işi tamamlandı olarak işaretleyin.",
+                        "tone": "success",
+                    }
+                )
+            else:
+                flow.update(
+                    {
+                        "title": "Randevu saati geldi",
+                        "hint": "İş tamamlandıysa talebi kapatabilirsiniz.",
+                        "next_action": "İş bittiyse Tamamlandı butonunu kullanın.",
+                        "tone": "action",
+                    }
+                )
+        elif appointment_status in {"rejected", "cancelled"}:
+            flow.update(
+                {
+                    "title": "Randevu yeniden planlanmalı",
+                    "hint": "Mevcut randevu aktif değil.",
+                    "next_action": "Yeni bir randevu saati belirleyin.",
+                    "tone": "danger",
+                }
+            )
+        elif appointment_status == "completed":
+            flow.update(
+                {
+                    "title": "Randevu tamamlandı",
+                    "hint": "İş kapatma aşamasına geçebilirsiniz.",
+                    "next_action": "Talep tamamlandıysa puanlama yapabilirsiniz.",
+                    "tone": "success",
+                }
+            )
+        return flow
+
+    if status == "completed":
+        return {
+            "step": "Adım 4/4",
+            "title": "İş tamamlandı",
+            "hint": "Talep başarıyla tamamlandı.",
+            "next_action": "Ustayı puanlayarak süreci bitirebilirsiniz.",
+            "tone": "success",
+        }
+
+    if status == "cancelled":
+        return {
+            "step": "Kapalı",
+            "title": "Talep iptal edildi",
+            "hint": "Bu talep artık aktif değil.",
+            "next_action": "Gerekirse yeni bir talep oluşturun.",
+            "tone": "muted",
+        }
+
+    return flow
+
+
 def purge_request_messages(service_request_id):
     ServiceMessage.objects.filter(service_request_id=service_request_id).delete()
 
@@ -875,28 +1001,62 @@ def index(request):
     providers_qs = (
         Provider.objects.filter(is_verified=True, is_available=True)
         .prefetch_related("service_types")
-        .annotate(ratings_count=Count("ratings", distinct=True))
-        .order_by("-rating", "full_name", "id")
+        .annotate(
+            ratings_count=Count("ratings", distinct=True),
+            active_slot_count=Count("availability_slots", filter=Q(availability_slots__is_active=True), distinct=True),
+        )
     )
     location_used = False
+    location_sorted = False
+    selected_sort_label = "Önerilen"
 
     if search_form.is_valid():
+        query_text = (search_form.cleaned_data.get("query") or "").strip()
         service_type = search_form.cleaned_data.get("service_type")
         city = (search_form.cleaned_data.get("city") or "").strip()
         district = (search_form.cleaned_data.get("district") or "").strip()
+        sort_by = (search_form.cleaned_data.get("sort_by") or "relevance").strip() or "relevance"
+        min_rating = search_form.cleaned_data.get("min_rating")
+        min_reviews = search_form.cleaned_data.get("min_reviews")
+        has_schedule = bool(search_form.cleaned_data.get("has_schedule"))
         user_latitude = search_form.cleaned_data.get("latitude")
         user_longitude = search_form.cleaned_data.get("longitude")
+        requires_distinct = False
 
         if service_type:
             providers_qs = providers_qs.filter(service_types=service_type)
+        if query_text:
+            providers_qs = providers_qs.filter(
+                Q(full_name__icontains=query_text)
+                | Q(description__icontains=query_text)
+                | Q(service_types__name__icontains=query_text)
+            )
+            requires_distinct = True
         if city:
             providers_qs = providers_qs.filter(city__icontains=city)
         if district and district != ANY_DISTRICT_VALUE:
             providers_qs = providers_qs.filter(district__icontains=district)
+        if min_rating is not None:
+            providers_qs = providers_qs.filter(rating__gte=min_rating)
+        if min_reviews is not None:
+            providers_qs = providers_qs.filter(ratings_count__gte=min_reviews)
+        if has_schedule:
+            providers_qs = providers_qs.filter(active_slot_count__gt=0)
+        if requires_distinct:
+            providers_qs = providers_qs.distinct()
 
-        providers = list(providers_qs[:1000])
+        if sort_by not in {"relevance", "distance", "rating_desc", "reviews_desc", "newest", "name_asc"}:
+            sort_by = "relevance"
+        if sort_by == "distance" and (user_latitude is None or user_longitude is None):
+            sort_by = "relevance"
+
+        selected_sort_label = dict(search_form.fields["sort_by"].choices).get(sort_by, "Önerilen")
         if user_latitude is not None and user_longitude is not None:
             location_used = True
+
+        if location_used and sort_by in {"relevance", "distance"}:
+            location_sorted = True
+            providers = list(providers_qs[:2000])
             for provider in providers:
                 if provider.latitude is not None and provider.longitude is not None:
                     provider.distance_km = round(
@@ -915,6 +1075,8 @@ def index(request):
                     p.distance_km is None,
                     p.distance_km if p.distance_km is not None else 10**9,
                     -float(p.rating),
+                    -int(getattr(p, "ratings_count", 0) or 0),
+                    (p.full_name or "").lower(),
                 )
             )
             provider_page_obj = paginate_items(
@@ -925,6 +1087,15 @@ def index(request):
             )
             providers = list(provider_page_obj.object_list)
         else:
+            if sort_by == "reviews_desc":
+                providers_qs = providers_qs.order_by("-ratings_count", "-rating", "full_name", "id")
+            elif sort_by == "newest":
+                providers_qs = providers_qs.order_by("-created_at", "-rating", "full_name", "id")
+            elif sort_by == "name_asc":
+                providers_qs = providers_qs.order_by("full_name", "-rating", "id")
+            else:
+                providers_qs = providers_qs.order_by("-rating", "-ratings_count", "full_name", "id")
+
             provider_page_obj = paginate_items(
                 request,
                 providers_qs,
@@ -933,8 +1104,21 @@ def index(request):
             )
             providers = list(provider_page_obj.object_list)
             for provider in providers:
-                provider.distance_km = None
+                if location_used and provider.latitude is not None and provider.longitude is not None:
+                    provider.distance_km = round(
+                        haversine_km(
+                            float(user_latitude),
+                            float(user_longitude),
+                            float(provider.latitude),
+                            float(provider.longitude),
+                        ),
+                        1,
+                    )
+                else:
+                    provider.distance_km = None
     else:
+        selected_sort_label = "Önerilen"
+        providers_qs = providers_qs.order_by("-rating", "-ratings_count", "full_name", "id")
         provider_page_obj = paginate_items(
             request,
             providers_qs,
@@ -960,6 +1144,8 @@ def index(request):
         "provider_page_size": provider_page_size,
         "provider_page_size_options": provider_page_size_options,
         "location_used": location_used,
+        "location_sorted": location_sorted,
+        "selected_sort_label": selected_sort_label,
         "city_district_map_json": get_city_district_map_json(),
         "is_provider_user": is_provider_user,
         "popular_service_types": get_popular_service_types(),
@@ -1028,6 +1214,8 @@ def create_request(request):
                 "provider_page_size": provider_page_size,
                 "provider_page_size_options": provider_page_size_options,
                 "location_used": False,
+                "location_sorted": False,
+                "selected_sort_label": "Önerilen",
                 "city_district_map_json": get_city_district_map_json(),
                 "is_provider_user": False,
                 "popular_service_types": get_popular_service_types(),
@@ -1291,7 +1479,7 @@ def provider_profile_view(request):
             form = ProviderProfileForm(request.POST, instance=provider)
             if form.is_valid():
                 form.save()
-                messages.success(request, "Usta profiliniz guncellendi.")
+                messages.success(request, "Usta profiliniz güncellendi.")
                 return redirect("provider_profile")
     else:
         form = ProviderProfileForm(instance=provider)
@@ -1311,38 +1499,105 @@ def provider_profile_view(request):
     )
 
 
-@login_required
-@never_cache
-@ensure_csrf_cookie
-def request_messages(request, request_id):
+def get_message_quick_replies(viewer_role):
+    if viewer_role == "provider":
+        return [
+            "Merhaba, talebinizi aldım.",
+            "Müsaitim, uygun saati yazarsanız randevu planlayabiliriz.",
+            "Yola çıktım, kısa süre içinde ulaşacağım.",
+            "Fotoğraf paylaşırsanız daha net yönlendirebilirim.",
+        ]
+    return [
+        "Merhaba, müsait misiniz?",
+        "Randevu saatini netleştirelim.",
+        "Adres detayını paylaşıyorum.",
+        "Teşekkürler, onaylıyorum.",
+    ]
+
+
+def serialize_service_message(message_item, viewer_role):
+    return {
+        "id": message_item.id,
+        "body": message_item.body,
+        "sender_role": message_item.sender_role,
+        "sender_label": message_item.get_sender_role_display(),
+        "mine": message_item.sender_role == viewer_role,
+        "created_at": timezone.localtime(message_item.created_at).strftime("%d.%m.%Y %H:%M"),
+    }
+
+
+def resolve_request_message_access(request, request_id, *, api=False):
     service_request = get_object_or_404(
-        ServiceRequest.objects.select_related("service_type", "customer", "matched_provider"),
+        ServiceRequest.objects.select_related(
+            "service_type",
+            "customer",
+            "matched_provider",
+            "matched_offer",
+            "matched_offer__provider",
+        ),
         id=request_id,
     )
     provider = get_provider_for_user(request.user)
     if provider:
         if not provider.is_verified:
+            if api:
+                return None, None, None, JsonResponse({"detail": "pending-approval"}, status=403)
             queue_provider_pending_approval_warning(request)
-            return redirect("provider_login")
+            return None, None, None, redirect("provider_login")
         if service_request.matched_provider_id != provider.id:
-            messages.error(request, "Bu mesajlasmaya erisiminiz yok.")
-            return redirect("provider_requests")
+            if api:
+                return None, None, None, JsonResponse({"detail": "forbidden"}, status=403)
+            messages.error(request, "Bu mesajlaşmaya erişiminiz yok.")
+            return None, None, None, redirect("provider_requests")
+        if service_request.matched_offer_id is None or service_request.matched_offer.provider_id != provider.id:
+            if api:
+                return None, None, None, JsonResponse({"detail": "not-selected-by-customer"}, status=403)
+            messages.warning(request, "Müşteri sizi henüz seçmediği için mesajlaşma açılmadı.")
+            return None, None, None, redirect("provider_requests")
         viewer_role = "provider"
         back_url = "provider_requests"
     else:
         if service_request.customer_id != request.user.id:
-            messages.error(request, "Bu mesajlasmaya erisiminiz yok.")
-            return redirect("index")
+            if api:
+                return None, None, None, JsonResponse({"detail": "forbidden"}, status=403)
+            messages.error(request, "Bu mesajlaşmaya erişiminiz yok.")
+            return None, None, None, redirect("index")
         if service_request.matched_provider and not service_request.matched_provider.is_verified:
+            if api:
+                return None, None, None, JsonResponse({"detail": "provider-not-verified"}, status=403)
             messages.warning(request, "Bu usta henüz admin onaylı olmadığı için mesajlaşma kapalı.")
-            return redirect("my_requests")
+            return None, None, None, redirect("my_requests")
+        if service_request.matched_offer_id is None:
+            if api:
+                return None, None, None, JsonResponse({"detail": "provider-not-selected"}, status=403)
+            messages.warning(request, "Usta seçimi tamamlanmadan mesajlaşma açılmaz.")
+            return None, None, None, redirect("my_requests")
         viewer_role = "customer"
         back_url = "my_requests"
 
     if service_request.status != "matched":
+        if api:
+            return (
+                None,
+                None,
+                None,
+                JsonResponse({"detail": "thread-closed", "request_status": service_request.status}, status=409),
+            )
         messages.warning(request, "Tamamlanan veya kapalı taleplerde mesajlaşma açık değildir.")
-        return redirect(back_url)
+        return None, None, None, redirect(back_url)
 
+    return service_request, viewer_role, back_url, None
+
+
+@login_required
+@never_cache
+@ensure_csrf_cookie
+def request_messages(request, request_id):
+    service_request, viewer_role, back_url, blocked_response = resolve_request_message_access(request, request_id)
+    if blocked_response:
+        return blocked_response
+
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     if request.method == "POST":
         form = ServiceMessageForm(request.POST)
         if form.is_valid():
@@ -1351,14 +1606,24 @@ def request_messages(request, request_id):
             message_item.sender_user = request.user
             message_item.sender_role = viewer_role
             message_item.save()
+            if is_ajax:
+                return JsonResponse(
+                    {
+                        "ok": True,
+                        "message": serialize_service_message(message_item, viewer_role),
+                    }
+                )
             return redirect("request_messages", request_id=service_request.id)
+        if is_ajax:
+            return JsonResponse({"ok": False, "error": get_first_form_error(form)}, status=400)
     else:
         form = ServiceMessageForm()
 
     ServiceMessage.objects.filter(service_request=service_request, read_at__isnull=True).exclude(
         sender_role=viewer_role
     ).update(read_at=timezone.now())
-    thread_messages = list(service_request.messages.select_related("sender_user").all())
+    thread_messages = list(service_request.messages.select_related("sender_user").order_by("id"))
+    latest_message_id = thread_messages[-1].id if thread_messages else 0
 
     return render(
         request,
@@ -1367,10 +1632,79 @@ def request_messages(request, request_id):
             "service_request": service_request,
             "viewer_role": viewer_role,
             "messages_list": thread_messages,
+            "latest_message_id": latest_message_id,
             "form": form,
             "back_url": back_url,
+            "quick_reply_options": get_message_quick_replies(viewer_role),
         },
     )
+
+
+@login_required
+@never_cache
+def request_messages_snapshot(request, request_id):
+    service_request, viewer_role, _back_url, blocked_response = resolve_request_message_access(
+        request, request_id, api=True
+    )
+    if blocked_response:
+        return blocked_response
+
+    after_id_raw = (request.GET.get("after_id") or "").strip()
+    if after_id_raw.isdigit():
+        after_id = int(after_id_raw)
+    else:
+        after_id = 0
+
+    ServiceMessage.objects.filter(service_request=service_request, read_at__isnull=True).exclude(
+        sender_role=viewer_role
+    ).update(read_at=timezone.now())
+
+    thread_qs = service_request.messages.select_related("sender_user").order_by("id")
+    if after_id > 0:
+        thread_qs = thread_qs.filter(id__gt=after_id)
+    thread_messages = list(thread_qs[:100])
+
+    if thread_messages:
+        latest_id = thread_messages[-1].id
+    else:
+        latest_id = service_request.messages.order_by("-id").values_list("id", flat=True).first() or 0
+
+    return JsonResponse(
+        {
+            "messages": [serialize_service_message(item, viewer_role) for item in thread_messages],
+            "latest_id": latest_id,
+            "thread_closed": False,
+        }
+    )
+
+
+@login_required
+@never_cache
+def notifications_view(request):
+    entries = build_notification_entries(request.user, limit=250)
+    page_obj = paginate_items(request, entries, per_page=20, page_param="page")
+    page_entries = list(page_obj.object_list)
+    unread_count = sum(1 for item in entries if item.get("is_unread"))
+
+    return render(
+        request,
+        "Myapp/notifications.html",
+        {
+            "notifications_page_obj": page_obj,
+            "notification_entries": page_entries,
+            "notifications_unread_count": unread_count,
+            "notifications_retention_days": get_notification_retention_days(),
+        },
+    )
+
+
+@login_required
+@require_POST
+def notifications_mark_all_read(request):
+    mark_all_notifications_read(request.user)
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return JsonResponse({"ok": True})
+    return redirect("notifications")
 
 
 @login_required
@@ -1435,7 +1769,31 @@ def my_requests(request):
             item.provider_availability_slots = list(
                 item.matched_provider.availability_slots.filter(is_active=True).order_by("weekday", "start_time")
             )
+        flow_state = build_customer_flow_state(
+            item,
+            item.appointment_entry,
+            has_accepted_offers=bool(item.accepted_offers),
+            now=now,
+        )
+        item.flow_step = flow_state["step"]
+        item.flow_title = flow_state["title"]
+        item.flow_hint = flow_state["hint"]
+        item.flow_next_action = flow_state["next_action"]
+        item.flow_tone = flow_state["tone"]
     cancelled_count = requests_qs.filter(status="cancelled").count()
+    all_request_ids = list(requests_qs.values_list("id", flat=True))
+    waiting_provider_appointment_count = 0
+    if all_request_ids:
+        waiting_provider_appointment_count = ServiceAppointment.objects.filter(
+            service_request_id__in=all_request_ids,
+            status="pending",
+        ).count()
+    customer_flow_summary = {
+        "waiting_provider_count": requests_qs.filter(status__in=["new", "pending_provider"]).count(),
+        "waiting_customer_selection_count": requests_qs.filter(status="pending_customer").count(),
+        "active_matched_count": requests_qs.filter(status="matched").count(),
+        "waiting_provider_appointment_count": waiting_provider_appointment_count,
+    }
     customer_snapshot = build_customer_snapshot_payload(request.user)
     return render(
         request,
@@ -1446,6 +1804,7 @@ def my_requests(request):
             "cancelled_count": cancelled_count,
             "customer_requests_signature": customer_snapshot["signature"],
             "customer_snapshot": customer_snapshot,
+            "customer_flow_summary": customer_flow_summary,
         },
     )
 
@@ -1721,7 +2080,7 @@ def complete_request(request, request_id):
         )
 
     purge_request_messages(service_request.id)
-    messages.success(request, "Talep tamamlandi olarak guncellendi.")
+    messages.success(request, "Talep tamamlandı olarak güncellendi.")
     return redirect("my_requests")
 
 @login_required
@@ -2119,7 +2478,11 @@ def provider_requests(request):
     )
     recent_appointments = list(recent_appointments_page_obj.object_list)
     active_threads = list(
-        provider.service_requests.filter(status="matched")
+        provider.service_requests.filter(
+            status="matched",
+            matched_offer__isnull=False,
+            matched_offer__provider=provider,
+        )
         .select_related("service_type", "customer")
         .order_by("-created_at")[:30]
     )
@@ -2164,6 +2527,8 @@ def provider_panel_snapshot(request):
         "unread_messages_count": ServiceMessage.objects.filter(
             service_request__matched_provider=provider,
             service_request__status="matched",
+            service_request__matched_offer__isnull=False,
+            service_request__matched_offer__provider=provider,
             read_at__isnull=True,
         ).exclude(sender_role="provider").count(),
     }
@@ -2515,7 +2880,7 @@ def provider_reject_offer(request, offer_id):
     )
     if dispatch_result["result"] == "offers-created":
         offer_count = len(dispatch_result["offers"])
-        messages.info(request, f"Talep #{service_request.id} reddedildi. {offer_count} yeni ustaya teklif acildi.")
+        messages.info(request, f"Talep #{service_request.id} reddedildi. {offer_count} yeni ustaya teklif açıldı.")
     else:
         request_id = service_request.id
         service_request.delete()

@@ -47,6 +47,10 @@
       <div class="card-body">
         <h2 class="h5 mb-3 section-title"><i class="bi bi-search me-2"></i>Usta Ara</h2>
         <form method="get" class="row g-3 search-form" id="search-form">
+          <div class="col-12">
+            <label class="form-label">{{ search_form.query.label }}</label>
+            {{ search_form.query }}
+          </div>
           <div class="col-lg-6">
             <label class="form-label">{{ search_form.service_type.label }}</label>
             <div class="service-picker">
@@ -84,6 +88,26 @@
             <label class="form-label">{{ search_form.district.label }}</label>
             {{ search_form.district }}
           </div>
+          <div class="col-md-4 col-lg-3">
+            <label class="form-label">{{ search_form.min_rating.label }}</label>
+            {{ search_form.min_rating }}
+          </div>
+          <div class="col-md-4 col-lg-3">
+            <label class="form-label">{{ search_form.min_reviews.label }}</label>
+            {{ search_form.min_reviews }}
+          </div>
+          <div class="col-md-4 col-lg-3">
+            <label class="form-label">{{ search_form.sort_by.label }}</label>
+            {{ search_form.sort_by }}
+          </div>
+          <div class="col-12">
+            <div class="form-check">
+              {{ search_form.has_schedule }}
+              <label class="form-check-label" for="{{ search_form.has_schedule.id_for_label }}">
+                {{ search_form.has_schedule.label }}
+              </label>
+            </div>
+          </div>
           <div class="col-12 form-toolbar">
             {{ search_form.latitude }}
             {{ search_form.longitude }}
@@ -100,8 +124,10 @@
         <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
           <h2 class="h5 mb-0 section-title"><i class="bi bi-person-workspace me-2"></i>Müsait Ustalar</h2>
           <div class="d-flex align-items-center gap-2 flex-wrap">
-            {% if location_used %}
+            {% if location_sorted %}
               <span class="result-badge"><i class="bi bi-compass-fill me-1"></i>Mesafeye Göre Sıralandı</span>
+            {% elif location_used %}
+              <span class="result-badge"><i class="bi bi-compass-fill me-1"></i>Mesafe Bilgisi Açık</span>
             {% endif %}
             <form method="get" class="provider-page-size-form">
               {% for key, value in request.GET.items %}
@@ -121,6 +147,7 @@
         <p class="small text-muted mb-3">
           Toplam {{ provider_total_count }} usta bulundu.
           Sayfa {{ provider_page_obj.number }} / {{ provider_page_obj.paginator.num_pages }}.
+          Sıralama: {{ selected_sort_label }}.
         </p>
         {% if providers %}
           <div class="row g-3 provider-grid">

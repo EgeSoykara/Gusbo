@@ -22,6 +22,35 @@
         <a class="btn btn-main" href="{% url 'index' %}#talep-form"><i class="bi bi-plus-circle me-1"></i>Yeni Talep</a>
       </div>
     </div>
+    <div class="customer-simple-guide mb-3" role="note" aria-label="Müşteri süreç rehberi">
+      <strong><i class="bi bi-info-circle-fill me-1"></i>Akış:</strong>
+      1) Usta teklifini bekleyin.
+      2) Ustanızı seçin.
+      3) Randevuyu oluşturup usta onayını bekleyin.
+      4) İş bitince tamamlandı olarak kapatın.
+    </div>
+    <section class="customer-kpi-grid mb-3" aria-label="Süreç özeti">
+      <article class="customer-kpi-card">
+        <div class="customer-kpi-title">Usta Yanıtı Bekleyen</div>
+        <div class="customer-kpi-value">{{ customer_flow_summary.waiting_provider_count }}</div>
+        <div class="customer-kpi-note">Teklif aşamasındaki talepler.</div>
+      </article>
+      <article class="customer-kpi-card">
+        <div class="customer-kpi-title">Seçiminizi Bekleyen</div>
+        <div class="customer-kpi-value">{{ customer_flow_summary.waiting_customer_selection_count }}</div>
+        <div class="customer-kpi-note">Usta seçmeniz gereken talepler.</div>
+      </article>
+      <article class="customer-kpi-card">
+        <div class="customer-kpi-title">Aktif Eşleşme</div>
+        <div class="customer-kpi-value">{{ customer_flow_summary.active_matched_count }}</div>
+        <div class="customer-kpi-note">Randevu aşamasındaki işler.</div>
+      </article>
+      <article class="customer-kpi-card">
+        <div class="customer-kpi-title">Usta Onayı Bekleyen</div>
+        <div class="customer-kpi-value">{{ customer_flow_summary.waiting_provider_appointment_count }}</div>
+        <div class="customer-kpi-note">Randevusu usta onayında olanlar.</div>
+      </article>
+    </section>
     {% if requests %}
       <div class="table-responsive">
         <table class="table request-table align-middle mb-0">
@@ -54,6 +83,11 @@
                       Detaylar
                     </button>
                   </div>
+                  <div class="request-flow-chip flow-{{ item.flow_tone }}">
+                    <span class="request-flow-step">{{ item.flow_step }}</span>
+                    <span class="request-flow-title">{{ item.flow_title }}</span>
+                  </div>
+                  <div class="request-flow-hint">{{ item.flow_hint }}</div>
                 </td>
                 <td data-label="Eşleşen Usta">
                   {% if item.matched_provider %}
@@ -64,7 +98,7 @@
                   {% elif item.status == "pending_customer" and item.accepted_offers %}
                     {{ item.accepted_offers|length }} teklif geldi
                   {% elif item.status == "pending_provider" and item.pending_offer %}
-                    Ustalardan teklif bekleniyor
+                    Ustalardan teklif yanıtı bekleniyor
                   {% else %}
                     Henüz eşleşmedi
                   {% endif %}
@@ -82,7 +116,7 @@
                       <div class="small text-muted">Usta notu: {{ item.appointment_entry.provider_note }}</div>
                     {% endif %}
                   {% elif item.status == "matched" %}
-                    <span class="small text-muted">Henüz randevu alınmadı</span>
+                    <span class="small text-muted">Randevu bekleniyor. Usta sizden saat seçmenizi bekliyor.</span>
                   {% else %}
                     <span class="small text-muted">-</span>
                   {% endif %}
@@ -90,6 +124,9 @@
                 <td data-label="İşlemler">
                   {% if item.status == "matched" %}
                     <div class="request-actions-stack">
+                      <div class="request-action-guide">
+                        <i class="bi bi-signpost-split me-1"></i>Sıradaki adım: {{ item.flow_next_action }}
+                      </div>
                       <div class="request-action-group">
                         <div class="request-action-title">İletişim</div>
                         <a href="{% url 'request_messages' item.id %}" class="btn btn-sm nav-ghost-btn">
@@ -142,7 +179,7 @@
                             {% if item.appointment_entry.status == "pending" or item.appointment_entry.status == "pending_customer" or item.appointment_entry.status == "confirmed" %}
                               {% if item.appointment_entry.status == "pending_customer" %}
                                 <div class="request-action-note">
-                                  <i class="bi bi-patch-check me-1"></i>Usta onayı verildi, randevu onaylandı.
+                                  <i class="bi bi-patch-check me-1"></i>Randevu son onay aşamasında görünüyor. Gerekirse saati güncelleyebilirsiniz.
                                 </div>
                               {% endif %}
                               <form method="post" action="{% url 'cancel_appointment' item.id %}" class="m-0">
@@ -297,6 +334,9 @@
                     {% endif %}
                   {% elif item.status == "pending_customer" %}
                     <div class="request-actions-stack">
+                      <div class="request-action-guide">
+                        <i class="bi bi-signpost-split me-1"></i>Sıradaki adım: {{ item.flow_next_action }}
+                      </div>
                       {% if item.accepted_offers %}
                         {% for offer in item.accepted_offers %}
                           <form method="post" action="{% url 'select_provider_offer' item.id offer.id %}" class="offer-select-form">
@@ -339,16 +379,19 @@
                       </form>
                     </div>
                   {% elif item.status == "new" or item.status == "pending_provider" %}
-                    <form method="post" action="{% url 'cancel_request' item.id %}" class="m-0">
-                      {% csrf_token %}
-                      <button type="submit" class="btn btn-sm btn-outline-danger">
-                        <i class="bi bi-x-circle me-1"></i>Aramayı İptal Et
-                      </button>
-                    </form>
+                    <div class="request-actions-stack">
+                      <div class="request-action-guide">
+                        <i class="bi bi-signpost-split me-1"></i>Sıradaki adım: {{ item.flow_next_action }}
+                      </div>
+                      <form method="post" action="{% url 'cancel_request' item.id %}" class="m-0">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                          <i class="bi bi-x-circle me-1"></i>Aramayı İptal Et
+                        </button>
+                      </form>
+                    </div>
                   {% else %}
-                    {% if item.status == "pending_provider" %}
-                      <span class="small text-warning fw-semibold">Usta onayı bekleniyor</span>
-                    {% elif item.status == "cancelled" %}
+                    {% if item.status == "cancelled" %}
                       <form method="post" action="{% url 'delete_cancelled_request' item.id %}" class="m-0">
                         {% csrf_token %}
                         <button type="submit" class="btn btn-sm btn-outline-danger">
@@ -356,7 +399,7 @@
                         </button>
                       </form>
                     {% else %}
-                      <span class="small text-muted">Bekleniyor</span>
+                      <span class="small text-muted">{{ item.flow_next_action }}</span>
                     {% endif %}
                   {% endif %}
                 </td>

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card panel-card notifications-section shadow-sm reveal-up mb-4">
+  <div class="card-body p-4 d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <div>
+      <h1 class="h4 mb-1"><i class="bi bi-bell-fill me-2"></i>Bildirim Merkezi</h1>
+      <p class="mb-0 text-muted">Uygulama içi mesaj ve durum güncellemeleri burada listelenir.</p>
+      <p class="small text-muted mb-0 mt-1">Bildirimler son {{ notifications_retention_days }} gün için gösterilir.</p>
+    </div>
+    <div class="d-flex align-items-center gap-2 flex-wrap notifications-toolbar">
+      <span class="status-pill status-pending_customer">Okunmamis: {{ notifications_unread_count }}</span>
+      <form method="post" action="{% url 'notifications_mark_all_read' %}" class="m-0">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-check2-all me-1"></i>Tümünü Okundu İşaretle
+        </button>
+      </form>
+      {% if request.session.role == "provider" %}
+        <a href="{% url 'provider_requests' %}" class="btn btn-sm btn-main"><i class="bi bi-briefcase me-1"></i>Usta Paneli</a>
+      {% else %}
+        <a href="{% url 'my_requests' %}" class="btn btn-sm btn-main"><i class="bi bi-kanban me-1"></i>Taleplerim</a>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<section class="card panel-card notifications-section shadow-sm reveal-up">
+  <div class="card-body p-4">
+    {% if notification_entries %}
+      <div class="notification-list">
+        {% for item in notification_entries %}
+          <article class="notification-item {% if item.is_unread %}is-unread{% endif %}">
+            <div class="notification-item-head">
+              <span class="notification-category">{{ item.category }}</span>
+              <span class="small text-muted">{{ item.created_at|date:"d.m.Y H:i" }}</span>
+            </div>
+            <h2 class="h6 mb-1">{{ item.title }}</h2>
+            <p class="small text-muted mb-2">{{ item.body }}</p>
+            <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <a href="{{ item.link }}" class="btn btn-sm nav-ghost-btn">
+                <i class="bi bi-box-arrow-up-right me-1"></i>Detayı Aç
+              </a>
+              {% if item.is_unread %}
+                <span class="notification-unread-mark"><i class="bi bi-circle-fill"></i>Okunmamış</span>
+              {% endif %}
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+
+      {% if notifications_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">
+            Sayfa {{ notifications_page_obj.number }} / {{ notifications_page_obj.paginator.num_pages }}
+          </span>
+          <nav aria-label="Bildirim sayfalama">
+            <ul class="pagination pagination-sm mb-0">
+              <li class="page-item {% if not notifications_page_obj.has_previous %}disabled{% endif %}">
+                <a class="page-link" href="?page={% if notifications_page_obj.has_previous %}{{ notifications_page_obj.previous_page_number }}{% else %}1{% endif %}" aria-label="Önceki">
+                  <span aria-hidden="true">&laquo;</span>
+                </a>
+              </li>
+              <li class="page-item disabled"><span class="page-link">{{ notifications_page_obj.number }}</span></li>
+              <li class="page-item {% if not notifications_page_obj.has_next %}disabled{% endif %}">
+                <a class="page-link" href="?page={% if notifications_page_obj.has_next %}{{ notifications_page_obj.next_page_number }}{% else %}{{ notifications_page_obj.paginator.num_pages }}{% endif %}" aria-label="Sonraki">
+                  <span aria-hidden="true">&raquo;</span>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
+    {% else %}
+      <p class="mb-0 text-muted">Henüz bildiriminiz yok.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

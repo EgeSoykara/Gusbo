@@ -23,6 +23,27 @@ from .models import (
 ANY_DISTRICT_VALUE = "Herhangi"
 DISTRICT_CHOICES_WITH_ANY = [("", "İlçe seçin"), (ANY_DISTRICT_VALUE, "Herhangi")] + NC_DISTRICT_CHOICES
 PHONE_HELP_TEXT = "Örnek: 0555 123 45 67. +90 ile de girebilirsiniz."
+SEARCH_SORT_CHOICES = [
+    ("relevance", "Önerilen"),
+    ("distance", "En yakın"),
+    ("rating_desc", "Puana göre"),
+    ("reviews_desc", "Değerlendirme sayısı"),
+    ("newest", "En yeni kayıt"),
+    ("name_asc", "İsme göre A-Z"),
+]
+MIN_RATING_CHOICES = [
+    ("", "Puan fark etmez"),
+    ("3.5", "3.5 ve üzeri"),
+    ("4.0", "4.0 ve üzeri"),
+    ("4.5", "4.5 ve üzeri"),
+]
+MIN_REVIEW_CHOICES = [
+    ("", "Yorum sayısı fark etmez"),
+    ("3", "En az 3 yorum"),
+    ("5", "En az 5 yorum"),
+    ("10", "En az 10 yorum"),
+    ("20", "En az 20 yorum"),
+]
 
 
 def phone_widget_attrs():
@@ -74,6 +95,16 @@ class FlexibleChoiceField(forms.ChoiceField):
 
 
 class ServiceSearchForm(forms.Form):
+    query = forms.CharField(
+        required=False,
+        label="Usta veya hizmet ara",
+        widget=forms.TextInput(
+            attrs={
+                "placeholder": "İsim, hizmet veya açıklama ara",
+                "autocomplete": "off",
+            }
+        ),
+    )
     service_type = forms.ModelChoiceField(
         queryset=ServiceType.objects.all(),
         empty_label="Hizmet türü seçin",
@@ -82,6 +113,27 @@ class ServiceSearchForm(forms.Form):
     )
     city = FlexibleChoiceField(choices=[("", "Şehir seçin")] + NC_CITY_CHOICES, required=False, label="Şehir")
     district = FlexibleChoiceField(choices=DISTRICT_CHOICES_WITH_ANY, required=False, label="İlçe")
+    sort_by = forms.ChoiceField(
+        choices=SEARCH_SORT_CHOICES,
+        required=False,
+        initial="relevance",
+        label="Sıralama",
+    )
+    min_rating = forms.TypedChoiceField(
+        choices=MIN_RATING_CHOICES,
+        required=False,
+        coerce=float,
+        empty_value=None,
+        label="Minimum puan",
+    )
+    min_reviews = forms.TypedChoiceField(
+        choices=MIN_REVIEW_CHOICES,
+        required=False,
+        coerce=int,
+        empty_value=None,
+        label="Minimum yorum",
+    )
+    has_schedule = forms.BooleanField(required=False, label="Takvimi olanlar")
     latitude = forms.FloatField(required=False, widget=forms.HiddenInput())
     longitude = forms.FloatField(required=False, widget=forms.HiddenInput())
 
@@ -524,5 +576,4 @@ class ServiceMessageForm(forms.ModelForm):
         if len(body) < 2:
             raise ValidationError("Mesaj en az 2 karakter olmalı.")
         return body
-
 

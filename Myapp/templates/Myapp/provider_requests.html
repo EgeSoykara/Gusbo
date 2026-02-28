@@ -1,10 +1,10 @@
 ﻿{% extends "base.html" %}
 {% block content %}
-<section class="card panel-card shadow-sm reveal-up mb-4">
+<section class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
   <div class="card-body p-4">
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
       <h1 class="h4 mb-0"><i class="bi bi-briefcase-fill me-2"></i>Usta Paneli</h1>
-      <div class="d-flex align-items-center gap-2 flex-wrap">
+      <div class="d-flex align-items-center gap-2 flex-wrap provider-panel-toolbar">
         <span class="small text-muted">
           {{ provider.full_name }} - {{ provider.city }}/{{ provider.district }}
           {% if provider.is_verified %}
@@ -15,7 +15,14 @@
         <a href="{% url 'provider_profile' %}" class="btn btn-sm nav-ghost-btn"><i class="bi bi-person-vcard me-1"></i>Profili Düzenle</a>
       </div>
     </div>
-    <p class="mb-0 text-muted">Yeni talepler burada sıralı gelir.</p>
+    <p class="mb-2 text-muted">Yeni talepler burada sıralı gelir.</p>
+    <div class="provider-simple-guide" role="note" aria-label="Hızlı kullanım adımları">
+      <strong><i class="bi bi-info-circle-fill me-1"></i>Hızlı kullanım:</strong>
+      1) Bekleyen talepleri kontrol et.
+      2) Uygun olanı kabul et.
+      3) Müşteri mesajına ve randevuya sırayla dönüş yap.
+      <br>Müşteri panelinde bu aşamalar sırasıyla "Usta yanıtı bekleniyor", "Usta seçimi" ve "Randevu onayı" olarak görünür.
+    </div>
   </div>
 </section>
 
@@ -28,9 +35,28 @@
   data-unread-messages-count="{{ total_unread_messages }}"
 ></div>
 
-<section class="card panel-card shadow-sm reveal-up mb-4">
+<section class="provider-requests-section provider-kpi-grid mb-4">
+  <article class="provider-kpi-card">
+    <div class="provider-kpi-title">Bekleyen Talep</div>
+    <div class="provider-kpi-value">{{ pending_offers|length }}</div>
+    <div class="provider-kpi-note">Öncelikli olarak burayı kontrol edin.</div>
+  </article>
+  <article class="provider-kpi-card">
+    <div class="provider-kpi-title">Bekleyen Randevu</div>
+    <div class="provider-kpi-value">{{ pending_appointments|length }}</div>
+    <div class="provider-kpi-note">Randevu onayı bekleyen müşteri sayısı.</div>
+  </article>
+  <article class="provider-kpi-card">
+    <div class="provider-kpi-title">Okunmamış Mesaj</div>
+    <div class="provider-kpi-value">{{ total_unread_messages }}</div>
+    <div class="provider-kpi-note">Mesajlara dönüş yapmak güveni artırır.</div>
+  </article>
+</section>
+
+<section class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
   <div class="card-body p-4">
     <h2 class="h5 mb-3"><i class="bi bi-inbox-fill me-2"></i>Bekleyen Talepler</h2>
+    <p class="small text-muted mb-3">Yeni gelen işler burada görünür. Uygunsanız kabul edin, uygun değilseniz reddedin.</p>
     {% if pending_offers %}
       <div class="table-responsive">
         <table class="table request-table align-middle mb-0">
@@ -49,29 +75,29 @@
           <tbody>
             {% for offer in pending_offers %}
               <tr>
-                <td>#{{ offer.service_request.id }}</td>
-                <td>{{ offer.sent_at|date:"d.m.Y H:i" }}</td>
-                <td>
+                <td data-label="Talep No">#{{ offer.service_request.id }}</td>
+                <td data-label="Tarih">{{ offer.sent_at|date:"d.m.Y H:i" }}</td>
+                <td data-label="Süre Sonu">
                   {% if offer.expires_at %}
                     {{ offer.expires_at|date:"d.m.Y H:i" }}
                   {% else %}
                     -
                   {% endif %}
                 </td>
-                <td>{{ offer.service_request.service_type.name }}</td>
-                <td>{{ offer.service_request.city }} / {{ offer.service_request.district }}</td>
-                <td>{{ offer.service_request.customer_name }}<br><span class="small text-muted">{{ offer.service_request.customer_phone }}</span></td>
-                <td>{{ offer.service_request.details|truncatechars:90 }}</td>
-                <td>
+                <td data-label="Hizmet">{{ offer.service_request.service_type.name }}</td>
+                <td data-label="Konum">{{ offer.service_request.city }} / {{ offer.service_request.district }}</td>
+                <td data-label="Müşteri">{{ offer.service_request.customer_name }}<br><span class="small text-muted">{{ offer.service_request.customer_phone }}</span></td>
+                <td data-label="Detay">{{ offer.service_request.details|truncatechars:90 }}</td>
+                <td data-label="İşlem">
                   <div class="request-actions-stack">
                     <form method="post" action="{% url 'provider_accept_offer' offer.id %}">
                       {% csrf_token %}
-                      <input type="text" name="quote_note" class="appointment-note-input" placeholder="Kısa teklif notu (opsiyonel)">
-                      <button type="submit" class="btn btn-sm request-complete-btn mt-2"><i class="bi bi-send-check me-1"></i>Onay Gönder</button>
+                      <input type="text" name="quote_note" class="appointment-note-input" placeholder="Müşteriye kısa not (isteğe bağlı)">
+                      <button type="submit" class="btn btn-sm request-complete-btn mt-2"><i class="bi bi-send-check me-1"></i>Kabul Et ve Gönder</button>
                     </form>
                     <form method="post" action="{% url 'provider_reject_offer' offer.id %}">
                       {% csrf_token %}
-                      <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Red</button>
+                      <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Uygun Değil</button>
                     </form>
                   </div>
                 </td>
@@ -86,9 +112,10 @@
   </div>
 </section>
 
-<section class="card panel-card shadow-sm reveal-up mb-4">
+<section class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
   <div class="card-body p-4">
     <h2 class="h5 mb-3"><i class="bi bi-chat-dots-fill me-2"></i>Aktif Mesajlaşmalar</h2>
+    <p class="small text-muted mb-3">Müşterinin seçtiği işlerde mesajlaşma burada açılır. Mesajlara buradan hızlıca cevap verebilirsiniz.</p>
     {% if active_threads %}
       <div class="table-responsive">
         <table class="table request-table align-middle mb-0">
@@ -104,13 +131,13 @@
           <tbody>
             {% for thread in active_threads %}
               <tr>
-                <td>#{{ thread.id }}</td>
-                <td>{{ thread.service_type.name }}</td>
-                <td>{{ thread.customer_name }}</td>
-                <td><span class="status-pill status-{{ thread.status }}">{{ thread.get_status_display }}</span></td>
-                <td>
+                <td data-label="Talep No">#{{ thread.id }}</td>
+                <td data-label="Hizmet">{{ thread.service_type.name }}</td>
+                <td data-label="Müşteri">{{ thread.customer_name }}</td>
+                <td data-label="Durum"><span class="status-pill status-{{ thread.status }}">{{ thread.get_status_display }}</span></td>
+                <td data-label="Mesaj">
                   <a href="{% url 'request_messages' thread.id %}" class="btn btn-sm nav-ghost-btn">
-                    <i class="bi bi-chat-dots me-1"></i>Mesajları Aç
+                    <i class="bi bi-chat-dots me-1"></i>Mesajları Gör
                     {% if thread.unread_messages %}
                       <span class="chat-unread-badge">{{ thread.unread_messages }}</span>
                     {% endif %}
@@ -127,9 +154,10 @@
   </div>
 </section>
 
-<section class="card panel-card shadow-sm reveal-up mb-4">
+<section class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
   <div class="card-body p-4">
     <h2 class="h5 mb-3"><i class="bi bi-calendar-week-fill me-2"></i>Bekleyen Randevu Talepleri</h2>
+    <p class="small text-muted mb-3">Müşterinin talep ettiği randevu saatleri. Uygunsa onaylayın, değilse reddedin.</p>
     {% if pending_appointments %}
       <div class="table-responsive">
         <table class="table request-table align-middle mb-0">
@@ -146,24 +174,24 @@
           <tbody>
             {% for appointment in pending_appointments %}
               <tr>
-                <td>#{{ appointment.service_request.id }}</td>
-                <td>{{ appointment.service_request.service_type.name }}</td>
-                <td>{{ appointment.service_request.customer_name }}<br><span class="small text-muted">{{ appointment.service_request.customer_phone }}</span></td>
-                <td>{{ appointment.scheduled_for|date:"d.m.Y H:i" }}</td>
-                <td>{{ appointment.customer_note|default:"-"|truncatechars:70 }}</td>
-                <td>
+                <td data-label="Talep No">#{{ appointment.service_request.id }}</td>
+                <td data-label="Hizmet">{{ appointment.service_request.service_type.name }}</td>
+                <td data-label="Müşteri">{{ appointment.service_request.customer_name }}<br><span class="small text-muted">{{ appointment.service_request.customer_phone }}</span></td>
+                <td data-label="Randevu Saati">{{ appointment.scheduled_for|date:"d.m.Y H:i" }}</td>
+                <td data-label="Not">{{ appointment.customer_note|default:"-"|truncatechars:70 }}</td>
+                <td data-label="İşlem">
                   <div class="request-actions-stack">
                     <form method="post" action="{% url 'provider_confirm_appointment' appointment.id %}">
                       {% csrf_token %}
-                      <input type="text" name="provider_note" class="appointment-note-input" placeholder="Opsiyonel not">
+                      <input type="text" name="provider_note" class="appointment-note-input" placeholder="Müşteriye not (isteğe bağlı)">
                       <button type="submit" class="btn btn-sm request-complete-btn mt-2">
-                        <i class="bi bi-check2-circle me-1"></i>Usta Onayı Ver
+                        <i class="bi bi-check2-circle me-1"></i>Randevuyu Onayla
                       </button>
                     </form>
                     <form method="post" action="{% url 'provider_reject_appointment' appointment.id %}">
                       {% csrf_token %}
                       <button type="submit" class="btn btn-sm btn-outline-secondary">
-                        <i class="bi bi-x-circle me-1"></i>Reddet
+                        <i class="bi bi-x-circle me-1"></i>Uygun Değil
                       </button>
                     </form>
                   </div>
@@ -179,9 +207,10 @@
   </div>
 </section>
 
-<section class="card panel-card shadow-sm reveal-up mb-4">
+<section class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
   <div class="card-body p-4">
     <h2 class="h5 mb-3"><i class="bi bi-calendar-check-fill me-2"></i>Onaylı Randevular</h2>
+    <p class="small text-muted mb-3">Onaylanan randevular burada görünür. İş bittiyse “İş Tamamlandı” butonunu kullanın.</p>
     {% if confirmed_appointments %}
       <div class="table-responsive">
         <table class="table request-table align-middle mb-0">
@@ -198,16 +227,16 @@
           <tbody>
             {% for appointment in confirmed_appointments %}
               <tr>
-                <td>#{{ appointment.service_request.id }}</td>
-                <td>{{ appointment.service_request.service_type.name }}</td>
-                <td>{{ appointment.service_request.customer_name }}</td>
-                <td>{{ appointment.scheduled_for|date:"d.m.Y H:i" }}</td>
-                <td>
+                <td data-label="Talep No">#{{ appointment.service_request.id }}</td>
+                <td data-label="Hizmet">{{ appointment.service_request.service_type.name }}</td>
+                <td data-label="Müşteri">{{ appointment.service_request.customer_name }}</td>
+                <td data-label="Randevu Saati">{{ appointment.scheduled_for|date:"d.m.Y H:i" }}</td>
+                <td data-label="Durum">
                   <span class="status-pill appointment-status appointment-{{ appointment.status }}">
                     {{ appointment.get_status_display }}
                   </span>
                 </td>
-                <td>
+                <td data-label="İşlem">
                   <form
                     method="post"
                     action="{% url 'provider_complete_appointment' appointment.id %}"
@@ -215,10 +244,10 @@
                   >
                     {% csrf_token %}
                     <button type="button" class="btn btn-sm request-complete-btn" data-complete-open>
-                      <i class="bi bi-clipboard2-check me-1"></i>Tamamlandı İşaretle
+                      <i class="bi bi-clipboard2-check me-1"></i>İş Tamamlandı
                     </button>
                     <div class="request-complete-inline-confirm d-none" data-complete-confirm-box>
-                      <div class="request-complete-inline-text">Bu randevuyu tamamlandı olarak işaretlemeyi onaylıyor musunuz</div>
+                      <div class="request-complete-inline-text">Bu randevuyu tamamlandı olarak işaretlemek istediğinize emin misiniz?</div>
                       <div class="request-complete-inline-actions">
                         <button type="submit" class="btn btn-sm request-complete-confirm-btn">
                           <i class="bi bi-check2-circle me-1"></i>Evet, Onayla
@@ -241,9 +270,10 @@
   </div>
 </section>
 
-<section class="card panel-card shadow-sm reveal-up">
+<section class="card panel-card provider-requests-section shadow-sm reveal-up">
   <div class="card-body p-4">
     <h2 class="h5 mb-3"><i class="bi bi-clock-history me-2"></i>Son Yanıtlarım</h2>
+    <p class="small text-muted mb-3">Bilgi amaçlı geçmiş cevaplarınız.</p>
     {% if recent_offers %}
       <div class="table-responsive">
         <table class="table request-table align-middle mb-0">
@@ -259,11 +289,11 @@
           <tbody>
             {% for offer in recent_offers %}
               <tr>
-                <td>#{{ offer.service_request.id }}</td>
-                <td>{{ offer.service_request.service_type.name }}</td>
-                <td>{{ offer.quote_note|default:"-" }}</td>
-                <td><span class="status-pill status-{{ offer.status }}">{{ offer.get_status_display }}</span></td>
-                <td>{{ offer.responded_at|date:"d.m.Y H:i" }}</td>
+                <td data-label="Talep No">#{{ offer.service_request.id }}</td>
+                <td data-label="Hizmet">{{ offer.service_request.service_type.name }}</td>
+                <td data-label="Not">{{ offer.quote_note|default:"-" }}</td>
+                <td data-label="Durum"><span class="status-pill status-{{ offer.status }}">{{ offer.get_status_display }}</span></td>
+                <td data-label="Yanıt Zamanı">{{ offer.responded_at|date:"d.m.Y H:i" }}</td>
               </tr>
             {% endfor %}
           </tbody>
@@ -297,9 +327,10 @@
   </div>
 </section>
 
-<section class="card panel-card shadow-sm reveal-up mt-4">
+<section class="card panel-card provider-requests-section shadow-sm reveal-up mt-4">
   <div class="card-body p-4">
     <h2 class="h5 mb-3"><i class="bi bi-calendar2-minus-fill me-2"></i>Randevu Geçmişi</h2>
+    <p class="small text-muted mb-3">Önceki randevularınızın özeti.</p>
     {% if recent_appointments %}
       <div class="table-responsive">
         <table class="table request-table align-middle mb-0">
@@ -315,15 +346,15 @@
           <tbody>
             {% for appointment in recent_appointments %}
               <tr>
-                <td>#{{ appointment.service_request.id }}</td>
-                <td>{{ appointment.service_request.service_type.name }}</td>
-                <td>{{ appointment.scheduled_for|date:"d.m.Y H:i" }}</td>
-                <td>
+                <td data-label="Talep No">#{{ appointment.service_request.id }}</td>
+                <td data-label="Hizmet">{{ appointment.service_request.service_type.name }}</td>
+                <td data-label="Randevu Saati">{{ appointment.scheduled_for|date:"d.m.Y H:i" }}</td>
+                <td data-label="Durum">
                   <span class="status-pill appointment-status appointment-{{ appointment.status }}">
                     {{ appointment.get_status_display }}
                   </span>
                 </td>
-                <td>{{ appointment.provider_note|default:appointment.customer_note|default:"-"|truncatechars:80 }}</td>
+                <td data-label="Not">{{ appointment.provider_note|default:appointment.customer_note|default:"-"|truncatechars:80 }}</td>
               </tr>
             {% endfor %}
           </tbody>

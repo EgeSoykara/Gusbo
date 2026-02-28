@@ -1,7 +1,7 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block content %}
-<section class="card panel-card shadow-sm reveal-up mb-4">
-  <div class="card-body p-4 d-flex align-items-center justify-content-between flex-wrap gap-2">
+<section class="card panel-card request-messages-section shadow-sm reveal-up mb-4">
+  <div class="card-body p-4 d-flex align-items-center justify-content-between flex-wrap gap-2 request-messages-toolbar">
     <div>
       <h1 class="h4 mb-1"><i class="bi bi-chat-dots-fill me-2"></i>Talep #{{ service_request.id }} Mesajları</h1>
       <p class="mb-0 text-muted">{{ service_request.service_type.name }} | {{ service_request.city }} / {{ service_request.district }}</p>
@@ -10,25 +10,29 @@
   </div>
 </section>
 
-<section class="row g-4">
+<section class="row g-4 request-messages-section">
   <div class="col-lg-8">
     <div class="card panel-card shadow-sm reveal-up">
       <div class="card-body p-4">
-        {% if messages_list %}
-          <div class="chat-thread">
-            {% for item in messages_list %}
-              <article class="chat-bubble {% if item.sender_role == viewer_role %}mine{% else %}theirs{% endif %}">
-                <div class="chat-meta">
-                  <strong>{{ item.get_sender_role_display }}</strong>
-                  <span>{{ item.created_at|date:"d.m.Y H:i" }}</span>
-                </div>
-                <p class="mb-0">{{ item.body|linebreaksbr }}</p>
-              </article>
-            {% endfor %}
-          </div>
-        {% else %}
-          <p class="mb-0 text-muted">Henüz mesaj yok. İlk mesajı gönderebilirsin.</p>
-        {% endif %}
+        <div
+          class="chat-thread"
+          id="chat-thread"
+          data-snapshot-url="{% url 'request_messages_snapshot' service_request.id %}"
+          data-latest-id="{{ latest_message_id }}"
+        >
+          {% for item in messages_list %}
+            <article class="chat-bubble {% if item.sender_role == viewer_role %}mine{% else %}theirs{% endif %}" data-message-id="{{ item.id }}">
+              <div class="chat-meta">
+                <strong>{{ item.get_sender_role_display }}</strong>
+                <span>{{ item.created_at|date:"d.m.Y H:i" }}</span>
+              </div>
+              <p class="mb-0">{{ item.body|linebreaksbr }}</p>
+            </article>
+          {% endfor %}
+        </div>
+        <p id="chat-empty-state" class="mb-0 text-muted mt-2" {% if messages_list %}hidden{% endif %}>
+          Henüz mesaj yok. İlk mesajı gönderebilirsin.
+        </p>
       </div>
     </div>
   </div>
@@ -36,7 +40,7 @@
     <div class="card panel-card shadow-sm reveal-up">
       <div class="card-body p-4">
         <h2 class="h6 mb-3"><i class="bi bi-pencil-square me-2"></i>Yeni Mesaj</h2>
-        <form method="post" class="row g-2">
+        <form method="post" class="row g-2" id="chat-message-form" action="">
           {% csrf_token %}
           <div class="col-12">
             {{ form.body }}
@@ -55,8 +59,198 @@
             <button type="submit" class="btn btn-main w-100"><i class="bi bi-send-fill me-1"></i>Gönder</button>
           </div>
         </form>
+
+        {% if quick_reply_options %}
+          <div class="message-quick-replies mt-3">
+            <div class="small text-muted mb-2">Hazır yanıtlar</div>
+            <div class="message-quick-grid">
+              {% for quick_reply in quick_reply_options %}
+                <button type="button" class="btn btn-sm btn-outline-secondary message-quick-btn" data-quick-reply="{{ quick_reply|escapejs }}">
+                  {{ quick_reply }}
+                </button>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+        <div id="chat-form-status" class="small mt-2 d-none"></div>
       </div>
     </div>
   </div>
 </section>
+
+<script>
+  (function () {
+    const thread = document.getElementById("chat-thread");
+    const form = document.getElementById("chat-message-form");
+    if (!thread || !form) return;
+
+    const snapshotUrl = thread.dataset.snapshotUrl || "";
+    const emptyState = document.getElementById("chat-empty-state");
+    const statusBox = document.getElementById("chat-form-status");
+    const textarea = form.querySelector("textarea[name='body']");
+    const submitButton = form.querySelector("button[type='submit']");
+    const quickReplyButtons = document.querySelectorAll("[data-quick-reply]");
+    let latestId = Number(thread.dataset.latestId || 0);
+    let sending = false;
+    let pollingStopped = false;
+    const pollIntervalMs = 5000;
+
+    function setStatus(text, isError) {
+      if (!statusBox) return;
+      if (!text) {
+        statusBox.classList.add("d-none");
+        statusBox.textContent = "";
+        statusBox.classList.remove("text-danger", "text-success");
+        return;
+      }
+      statusBox.textContent = text;
+      statusBox.classList.remove("d-none");
+      statusBox.classList.toggle("text-danger", Boolean(isError));
+      statusBox.classList.toggle("text-success", !isError);
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function bodyToHtml(text) {
+      return escapeHtml(text).replace(/\n/g, "<br>");
+    }
+
+    function isNearBottom() {
+      return thread.scrollHeight - thread.scrollTop - thread.clientHeight < 96;
+    }
+
+    function scrollToBottom() {
+      thread.scrollTop = thread.scrollHeight;
+    }
+
+    function renderMessageItem(message) {
+      const article = document.createElement("article");
+      article.className = "chat-bubble " + (message.mine ? "mine" : "theirs");
+      article.setAttribute("data-message-id", String(message.id));
+      article.innerHTML =
+        '<div class="chat-meta">' +
+          "<strong>" + escapeHtml(message.sender_label) + "</strong>" +
+          "<span>" + escapeHtml(message.created_at) + "</span>" +
+        "</div>" +
+        '<p class="mb-0">' + bodyToHtml(message.body) + "</p>";
+      return article;
+    }
+
+    function appendMessages(messages, forceScroll) {
+      if (!Array.isArray(messages) || !messages.length) return;
+      const shouldStickBottom = forceScroll || isNearBottom();
+
+      messages.forEach(function (message) {
+        const messageId = Number(message.id || 0);
+        if (!messageId) return;
+        if (thread.querySelector('[data-message-id="' + messageId + '"]')) return;
+        thread.appendChild(renderMessageItem(message));
+        if (messageId > latestId) latestId = messageId;
+      });
+
+      if (emptyState && thread.querySelector("[data-message-id]")) {
+        emptyState.hidden = true;
+      }
+      if (shouldStickBottom) {
+        scrollToBottom();
+      }
+    }
+
+    function disableComposer(reasonText) {
+      pollingStopped = true;
+      if (textarea) textarea.disabled = true;
+      if (submitButton) submitButton.disabled = true;
+      quickReplyButtons.forEach(function (button) {
+        button.disabled = true;
+      });
+      setStatus(reasonText || "Mesajlaşma şu anda kapalı.", true);
+    }
+
+    async function pollMessages() {
+      if (pollingStopped || document.hidden || !snapshotUrl) return;
+      try {
+        const response = await fetch(snapshotUrl + "?after_id=" + encodeURIComponent(latestId), {
+          method: "GET",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+        });
+        if (response.status === 409) {
+          disableComposer("Bu talepte mesajlaşma kapatıldı.");
+          return;
+        }
+        if (!response.ok) return;
+        const payload = await response.json();
+        appendMessages(payload.messages || [], false);
+        const payloadLatestId = Number(payload.latest_id || 0);
+        if (payloadLatestId > latestId) {
+          latestId = payloadLatestId;
+        }
+      } catch (error) {
+        void error;
+      }
+    }
+
+    form.addEventListener("submit", async function (event) {
+      if (pollingStopped) return;
+      event.preventDefault();
+      if (sending || !textarea || !submitButton) return;
+
+      const bodyText = String(textarea.value || "").trim();
+      if (bodyText.length < 2) {
+        setStatus("Mesaj en az 2 karakter olmalı.", true);
+        return;
+      }
+
+      sending = true;
+      submitButton.disabled = true;
+      setStatus("Gönderiliyor...", false);
+
+      try {
+        const response = await fetch(form.action || window.location.href, {
+          method: "POST",
+          body: new FormData(form),
+          credentials: "same-origin",
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok || !payload.message) {
+          setStatus(payload.error || "Mesaj gönderilemedi.", true);
+          return;
+        }
+        appendMessages([payload.message], true);
+        textarea.value = "";
+        setStatus("Mesaj gönderildi.", false);
+      } catch (error) {
+        setStatus("", false);
+        form.submit();
+        return;
+      } finally {
+        sending = false;
+        if (!pollingStopped) submitButton.disabled = false;
+      }
+    });
+
+    quickReplyButtons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        if (!textarea || textarea.disabled) return;
+        const quickReply = button.getAttribute("data-quick-reply") || "";
+        textarea.value = quickReply;
+        textarea.focus();
+        textarea.setSelectionRange(quickReply.length, quickReply.length);
+      });
+    });
+
+    scrollToBottom();
+    window.setInterval(pollMessages, pollIntervalMs);
+    pollMessages();
+  })();
+</script>
 {% endblock %}

@@ -1,8 +1,8 @@
 ﻿{% extends "base.html" %}
 {% block content %}
-<section class="card panel-card shadow-sm reveal-up mb-4">
+<section class="card panel-card agreement-history-section shadow-sm reveal-up mb-4">
   <div class="card-body p-4">
-    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 agreement-history-toolbar">
       <h1 class="h4 mb-0"><i class="bi bi-journal-check me-2"></i>Anlaşma Geçmişi</h1>
       {% if is_provider_user %}
         <a class="btn btn-sm btn-main" href="{% url 'provider_requests' %}">
@@ -20,7 +20,7 @@
   </div>
 </section>
 
-<section class="row g-3 mb-4">
+<section class="row g-3 mb-4 agreement-history-section">
   <div class="col-12 col-md-4">
     <div class="card panel-card shadow-sm h-100">
       <div class="card-body p-3">
@@ -47,7 +47,7 @@
   </div>
 </section>
 
-<section class="card panel-card shadow-sm reveal-up">
+<section class="card panel-card agreement-history-section shadow-sm reveal-up">
   <div class="card-body p-4">
     {% if agreements %}
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
@@ -72,15 +72,15 @@
           <tbody>
             {% for item in agreements %}
               <tr>
-                <td>#{{ item.id }}</td>
-                <td>{{ item.service_type.name }}</td>
+                <td data-label="Talep No">#{{ item.id }}</td>
+                <td data-label="Hizmet">{{ item.service_type.name }}</td>
                 {% if is_provider_user %}
-                  <td>
+                  <td data-label="Müşteri">
                     {{ item.customer_name }}
                     <div class="small text-muted">{{ item.customer_phone }}</div>
                   </td>
                 {% else %}
-                  <td>
+                  <td data-label="Usta">
                     {% if item.matched_provider %}
                       {{ item.matched_provider.full_name }}
                       <div class="small text-muted">{{ item.matched_provider.phone }}</div>
@@ -89,15 +89,15 @@
                     {% endif %}
                   </td>
                 {% endif %}
-                <td>
+                <td data-label="Anlaşma Zamanı">
                   {% if item.matched_at %}
                     {{ item.matched_at|date:"d.m.Y H:i" }}
                   {% else %}
                     <span class="small text-muted">-</span>
                   {% endif %}
                 </td>
-                <td><span class="status-pill status-{{ item.status }}">{{ item.get_status_display }}</span></td>
-                <td>
+                <td data-label="Durum"><span class="status-pill status-{{ item.status }}">{{ item.get_status_display }}</span></td>
+                <td data-label="Randevu">
                   {% if item.appointment_entry %}
                     <div class="small fw-semibold">{{ item.appointment_entry.scheduled_for|date:"d.m.Y H:i" }}</div>
                     <span class="status-pill appointment-status appointment-{{ item.appointment_entry.status }}">

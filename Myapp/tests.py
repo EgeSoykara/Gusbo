@@ -1274,6 +1274,15 @@ class MarketplaceTests(TestCase):
             customer=customer,
             status="matched",
         )
+        selected_offer = ProviderOffer.objects.create(
+            service_request=matched_request,
+            provider=self.provider_ali,
+            token="CHATMATCH01",
+            sequence=1,
+            status="accepted",
+        )
+        matched_request.matched_offer = selected_offer
+        matched_request.save(update_fields=["matched_offer"])
 
         self.client.login(username="chatcustomer", password="GucluSifre123!")
         self.client.post(
@@ -1293,6 +1302,44 @@ class MarketplaceTests(TestCase):
                 sender_role="customer",
             ).exists()
         )
+
+    def test_provider_cannot_message_before_customer_selects_provider(self):
+        customer = User.objects.create_user(username="chatnoselect", password="GucluSifre123!")
+        pending_request = ServiceRequest.objects.create(
+            customer_name="Secim Bekleyen Musteri",
+            customer_phone="05006660002",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Secim oncesi mesaj testi",
+            matched_provider=self.provider_ali,
+            customer=customer,
+            status="pending_customer",
+        )
+        ProviderOffer.objects.create(
+            service_request=pending_request,
+            provider=self.provider_ali,
+            token="CHATPEND01",
+            sequence=1,
+            status="accepted",
+        )
+
+        self.client.login(username="aliusta", password="GucluSifre123!")
+        get_response = self.client.get(
+            reverse("request_messages", args=[pending_request.id]),
+            follow=True,
+        )
+        self.assertEqual(get_response.status_code, 200)
+        self.assertContains(get_response, "Musteri sizi henuz secmedigi icin mesajlasma acilmadi.")
+
+        post_response = self.client.post(
+            reverse("request_messages", args=[pending_request.id]),
+            data={"body": "Secim olmadan mesaj denemesi"},
+            follow=True,
+        )
+        self.assertEqual(post_response.status_code, 200)
+        self.assertContains(post_response, "Musteri sizi henuz secmedigi icin mesajlasma acilmadi.")
+        self.assertEqual(ServiceMessage.objects.filter(service_request=pending_request).count(), 0)
 
     def test_completed_request_messages_page_is_closed(self):
         customer = User.objects.create_user(username="chatclosed", password="GucluSifre123!")
@@ -1998,7 +2045,6 @@ class MarketplaceTests(TestCase):
         service_request.refresh_from_db()
         self.assertEqual(offer.status, "accepted")
         self.assertEqual(service_request.status, "pending_customer")
-
 
 
 

@@ -4,6 +4,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from .models import SchedulerHeartbeat, ServiceAppointment, ServiceRequest, WorkflowEvent
+from .notifications import get_total_unread_notifications_count
 
 
 def admin_operational_summary(request):
@@ -35,3 +36,10 @@ def admin_operational_summary(request):
         "open_appointments": ServiceAppointment.objects.filter(status__in=["pending", "pending_customer"]).count(),
     }
     return {"admin_ops_summary": summary}
+
+
+def user_notifications_summary(request):
+    user = getattr(request, "user", None)
+    if not user or not user.is_authenticated:
+        return {"nav_unread_notifications_count": 0}
+    return {"nav_unread_notifications_count": get_total_unread_notifications_count(user)}

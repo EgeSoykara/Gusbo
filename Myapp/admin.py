@@ -9,6 +9,7 @@ from .constants import NC_CITY_CHOICES, NC_DISTRICT_CHOICES
 from .models import (
     CustomerProfile,
     IdempotencyRecord,
+    NotificationCursor,
     Provider,
     ProviderAvailabilitySlot,
     ProviderOffer,
@@ -290,4 +291,15 @@ class SchedulerHeartbeatAdmin(admin.ModelAdmin):
         return False
 
     def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(NotificationCursor)
+class NotificationCursorAdmin(admin.ModelAdmin):
+    list_display = ("user", "workflow_seen_at", "updated_at")
+    search_fields = ("user__username",)
+    ordering = ("-updated_at",)
+    readonly_fields = ("user", "workflow_seen_at", "created_at", "updated_at")
+
+    def has_add_permission(self, request):
         return False
