@@ -158,7 +158,6 @@ class ProviderOffer(models.Model):
     token = models.CharField(max_length=24, unique=True)
     sequence = models.PositiveIntegerField(default=1)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
-    quote_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     quote_note = models.CharField(max_length=240, blank=True)
     last_delivery_detail = models.CharField(max_length=120, blank=True)
     sent_at = models.DateTimeField(default=timezone.now)
@@ -396,55 +395,4 @@ class ProviderAvailabilitySlot(models.Model):
     def clean(self):
         if self.end_time <= self.start_time:
             raise ValidationError("Bitis saati baslangic saatinden sonra olmalidir.")
-
-
-class EscrowPayment(models.Model):
-    STATUS_CHOICES = (
-        ("awaiting_funding", "Fon Bekliyor"),
-        ("funded", "Fonlandi"),
-        ("released", "Ustaya Aktarildi"),
-        ("refunded", "Musteriye Iade"),
-    )
-
-    service_request = models.OneToOneField(
-        ServiceRequest,
-        on_delete=models.CASCADE,
-        related_name="escrow_payment",
-    )
-    customer = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="escrow_payments",
-    )
-    provider = models.ForeignKey(
-        Provider,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="escrow_payments",
-    )
-    agreed_amount = models.DecimalField(max_digits=10, decimal_places=2)
-    funded_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    status = models.CharField(max_length=24, choices=STATUS_CHOICES, default="awaiting_funding")
-    funded_at = models.DateTimeField(null=True, blank=True)
-    released_at = models.DateTimeField(null=True, blank=True)
-    refunded_at = models.DateTimeField(null=True, blank=True)
-    note = models.CharField(max_length=240, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["-updated_at", "-id"]
-
-    def __str__(self):
-        return f"Emanet Talep {self.service_request_id} ({self.status})"
-
-    def clean(self):
-        if self.agreed_amount <= 0:
-            raise ValidationError("Anlasilan tutar sifirdan buyuk olmalidir.")
-        if self.funded_amount < 0:
-            raise ValidationError("Fonlanan tutar negatif olamaz.")
-
 

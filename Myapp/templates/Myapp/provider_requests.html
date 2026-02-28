@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block content %}
 <section class="card panel-card shadow-sm reveal-up mb-4">
   <div class="card-body p-4">
@@ -8,7 +8,7 @@
         <span class="small text-muted">
           {{ provider.full_name }} - {{ provider.city }}/{{ provider.district }}
           {% if provider.is_verified %}
-            <span class="provider-verify-badge ms-1"><i class="bi bi-patch-check-fill me-1"></i>Dogrulanmis</span>
+            <span class="provider-verify-badge ms-1"><i class="bi bi-patch-check-fill me-1"></i>Doğrulanmış</span>
           {% endif %}
         </span>
         <a href="{% url 'agreement_history' %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-journal-check me-1"></i>Anlaşmalar</a>
@@ -66,9 +66,8 @@
                   <div class="request-actions-stack">
                     <form method="post" action="{% url 'provider_accept_offer' offer.id %}">
                       {% csrf_token %}
-                      <input type="number" min="1" step="0.01" name="quote_amount" class="appointment-note-input" placeholder="Teklif tutarı (TL)" required>
-                      <input type="text" name="quote_note" class="appointment-note-input mt-2" placeholder="Kısa teklif notu (opsiyonel)">
-                      <button type="submit" class="btn btn-sm request-complete-btn mt-2"><i class="bi bi-send-check me-1"></i>Teklif Gönder</button>
+                      <input type="text" name="quote_note" class="appointment-note-input" placeholder="Kısa teklif notu (opsiyonel)">
+                      <button type="submit" class="btn btn-sm request-complete-btn mt-2"><i class="bi bi-send-check me-1"></i>Onay Gönder</button>
                     </form>
                     <form method="post" action="{% url 'provider_reject_offer' offer.id %}">
                       {% csrf_token %}
@@ -252,7 +251,7 @@
             <tr>
               <th>Talep No</th>
               <th>Hizmet</th>
-              <th>Fiyat</th>
+              <th>Not</th>
               <th>Durum</th>
               <th>Yanıt Zamanı</th>
             </tr>
@@ -262,13 +261,7 @@
               <tr>
                 <td>#{{ offer.service_request.id }}</td>
                 <td>{{ offer.service_request.service_type.name }}</td>
-                <td>
-                  {% if offer.quote_amount %}
-                    {{ offer.quote_amount }} TL
-                  {% else %}
-                    -
-                  {% endif %}
-                </td>
+                <td>{{ offer.quote_note|default:"-" }}</td>
                 <td><span class="status-pill status-{{ offer.status }}">{{ offer.get_status_display }}</span></td>
                 <td>{{ offer.responded_at|date:"d.m.Y H:i" }}</td>
               </tr>
@@ -575,6 +568,10 @@
   })();
 </script>
 {% endblock %}
+
+
+
+
 
 
 

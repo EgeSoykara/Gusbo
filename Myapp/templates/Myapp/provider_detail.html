@@ -71,16 +71,6 @@
             <strong>{{ successful_quotes }}</strong>
           </div>
           <div class="provider-stat-box">
-            <small>Ortalama Teklif</small>
-            <strong>
-              {% if avg_quote %}
-                {{ avg_quote|floatformat:0 }} TL
-              {% else %}
-                Yok
-              {% endif %}
-            </strong>
-          </div>
-          <div class="provider-stat-box">
             <small>Durum</small>
             <strong>{% if provider.is_available %}Müsait{% else %}Müsait Değil{% endif %}</strong>
           </div>

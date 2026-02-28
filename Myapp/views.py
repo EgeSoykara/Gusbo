@@ -1,8 +1,7 @@
-import json
+﻿import json
 import hashlib
 import unicodedata
 from datetime import timedelta
-from decimal import Decimal, InvalidOperation
 from math import asin, cos, radians, sin, sqrt
 from uuid import uuid4
 
@@ -13,7 +12,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
-from django.db.models import Avg, Count, Q, Sum
+from django.db.models import Count, Q
 from django.http import HttpResponse, JsonResponse
 from django.urls import reverse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -42,7 +41,6 @@ from .forms import (
 )
 from .models import (
     CustomerProfile,
-    EscrowPayment,
     IdempotencyRecord,
     Provider,
     ProviderAvailabilitySlot,
@@ -171,68 +169,6 @@ def get_post_idempotency_ttl_seconds():
 
 def get_lifecycle_heartbeat_stale_seconds():
     return max(10, int(getattr(settings, "LIFECYCLE_HEARTBEAT_STALE_SECONDS", 180)))
-
-
-
-
-def get_or_create_escrow_payment(service_request):
-    if not service_request or service_request.status not in {"matched", "completed"}:
-        return None
-    if service_request.matched_offer is None or service_request.matched_offer.quote_amount is None:
-        return None
-    escrow, _ = EscrowPayment.objects.get_or_create(
-        service_request=service_request,
-        defaults={
-            "customer": service_request.customer,
-            "provider": service_request.matched_provider,
-            "agreed_amount": service_request.matched_offer.quote_amount,
-            "funded_amount": Decimal("0"),
-            "status": "awaiting_funding",
-        },
-    )
-    update_fields = []
-    if escrow.customer_id != service_request.customer_id:
-        escrow.customer = service_request.customer
-        update_fields.append("customer")
-    if escrow.provider_id != service_request.matched_provider_id:
-        escrow.provider = service_request.matched_provider
-        update_fields.append("provider")
-    if (
-        service_request.matched_offer
-        and service_request.matched_offer.quote_amount is not None
-        and escrow.status == "awaiting_funding"
-        and escrow.agreed_amount != service_request.matched_offer.quote_amount
-    ):
-        escrow.agreed_amount = service_request.matched_offer.quote_amount
-        update_fields.append("agreed_amount")
-    if update_fields:
-        update_fields.append("updated_at")
-        escrow.save(update_fields=update_fields)
-    return escrow
-
-
-def release_escrow_payment(service_request, actor_user=None, actor_role="system", note=""):
-    escrow = EscrowPayment.objects.filter(service_request=service_request).first()
-    if not escrow or escrow.status != "funded":
-        return False
-
-    escrow.status = "released"
-    escrow.released_at = timezone.now()
-    if note:
-        escrow.note = note[:240]
-    escrow.save(update_fields=["status", "released_at", "note", "updated_at"])
-
-    provider_phone = ""
-    if escrow.provider and escrow.provider.phone:
-        provider_phone = escrow.provider.phone
-    elif service_request.matched_provider and service_request.matched_provider.phone:
-        provider_phone = service_request.matched_provider.phone
-    if provider_phone:
-        send_sms(
-            provider_phone,
-            f"UstaBul odeme: Talep #{service_request.id} icin emanet odeme serbest birakildi.",
-        )
-    return True
 
 
 def infer_actor_role(user):
@@ -705,7 +641,7 @@ def build_customer_requests_signature(user):
 
     offer_rows = list(
         ProviderOffer.objects.filter(service_request_id__in=request_ids, provider__is_verified=True)
-        .values_list("service_request_id", "provider_id", "status", "responded_at", "quote_amount")
+        .values_list("service_request_id", "provider_id", "status", "responded_at")
         .order_by("service_request_id", "provider_id")
     )
     appointment_rows = list(
@@ -716,11 +652,6 @@ def build_customer_requests_signature(user):
     rating_rows = list(
         ProviderRating.objects.filter(service_request_id__in=request_ids)
         .values_list("service_request_id", "score", "updated_at")
-        .order_by("service_request_id")
-    )
-    escrow_rows = list(
-        EscrowPayment.objects.filter(service_request_id__in=request_ids)
-        .values_list("service_request_id", "status", "agreed_amount", "funded_amount", "updated_at")
         .order_by("service_request_id")
     )
     unread_rows = list(
@@ -735,7 +666,6 @@ def build_customer_requests_signature(user):
         "offers": offer_rows,
         "appointments": appointment_rows,
         "ratings": rating_rows,
-        "escrow": escrow_rows,
         "unread": unread_rows,
     }
     encoded = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
@@ -752,8 +682,6 @@ def build_customer_snapshot_payload(user):
         "confirmed_appointments_count": 0,
         "accepted_offers_count": 0,
         "unread_messages_count": 0,
-        "awaiting_escrow_count": 0,
-        "funded_escrow_count": 0,
     }
     if not request_ids:
         return snapshot
@@ -783,14 +711,6 @@ def build_customer_snapshot_payload(user):
         service_request_id__in=request_ids,
         read_at__isnull=True,
     ).exclude(sender_role="customer").count()
-    snapshot["awaiting_escrow_count"] = EscrowPayment.objects.filter(
-        service_request_id__in=request_ids,
-        status="awaiting_funding",
-    ).count()
-    snapshot["funded_escrow_count"] = EscrowPayment.objects.filter(
-        service_request_id__in=request_ids,
-        status="funded",
-    ).count()
     return snapshot
 
 
@@ -798,48 +718,29 @@ def purge_request_messages(service_request_id):
     ServiceMessage.objects.filter(service_request_id=service_request_id).delete()
 
 
-def get_provider_avg_quote_filter(service_type=None):
-    quote_filter = Q(offers__status="accepted", offers__quote_amount__isnull=False)
-    if service_type is not None:
-        quote_filter &= Q(offers__service_request__service_type=service_type)
-    return quote_filter
-
-
 def score_accepted_offers(offers):
     if not offers:
         return []
 
-    quote_values = [float(offer.quote_amount) for offer in offers if offer.quote_amount is not None]
-    min_quote = min(quote_values) if quote_values else None
-    max_quote = max(quote_values) if quote_values else None
     max_sequence = max((offer.sequence or 1) for offer in offers) or 1
 
     for offer in offers:
-        price_score = 22.0
-        if offer.quote_amount is not None and min_quote is not None and max_quote is not None:
-            if max_quote == min_quote:
-                price_score = 55.0
-            else:
-                normalized = (float(offer.quote_amount) - min_quote) / (max_quote - min_quote)
-                price_score = max(0.0, min(55.0, 55.0 * (1.0 - normalized)))
-
-        rating_score = max(0.0, min(35.0, (float(offer.provider.rating) / 5.0) * 35.0))
+        rating_score = max(0.0, min(70.0, (float(offer.provider.rating) / 5.0) * 70.0))
         if max_sequence <= 1:
-            speed_score = 10.0
+            speed_score = 30.0
         else:
-            speed_score = max(0.0, min(10.0, ((max_sequence - (offer.sequence or 1)) / (max_sequence - 1)) * 10.0))
+            speed_score = max(0.0, min(30.0, ((max_sequence - (offer.sequence or 1)) / (max_sequence - 1)) * 30.0))
 
-        offer.price_score = round(price_score, 1)
         offer.rating_score = round(rating_score, 1)
         offer.speed_score = round(speed_score, 1)
-        offer.comparison_score = round(offer.price_score + offer.rating_score + offer.speed_score, 1)
+        offer.comparison_score = round(offer.rating_score + offer.speed_score, 1)
 
     return sorted(
         offers,
         key=lambda offer: (
             -(offer.comparison_score),
-            float(offer.quote_amount) if offer.quote_amount is not None else float("inf"),
             -float(offer.provider.rating),
+            offer.sequence or 1,
         ),
     )
 
@@ -992,8 +893,6 @@ def index(request):
             providers_qs = providers_qs.filter(city__icontains=city)
         if district and district != ANY_DISTRICT_VALUE:
             providers_qs = providers_qs.filter(district__icontains=district)
-
-        providers_qs = providers_qs.annotate(avg_quote=Avg("offers__quote_amount", filter=get_provider_avg_quote_filter(service_type)))
 
         providers = list(providers_qs[:1000])
         if user_latitude is not None and user_longitude is not None:
@@ -1502,16 +1401,11 @@ def my_requests(request):
         appointment.service_request_id: appointment
         for appointment in ServiceAppointment.objects.filter(service_request_id__in=request_ids)
     }
-    escrow_map = {
-        escrow.service_request_id: escrow
-        for escrow in EscrowPayment.objects.filter(service_request_id__in=request_ids)
-    }
     unread_message_map = build_unread_message_map(request_ids, "customer")
     now = timezone.now()
     for item in requests:
         item.rating_entry = rating_map.get(item.id)
         item.appointment_entry = appointment_map.get(item.id)
-        item.escrow_entry = escrow_map.get(item.id)
         verified_offers = [
             offer for offer in item.provider_offers.all() if offer.provider_id and getattr(offer.provider, "is_verified", False)
         ]
@@ -1522,9 +1416,6 @@ def my_requests(request):
         item.unread_messages = unread_message_map.get(item.id, 0)
         item.can_complete_now = False
         item.complete_block_reason = ""
-
-        if item.status in {"matched", "completed"} and item.escrow_entry is None:
-            item.escrow_entry = get_or_create_escrow_payment(item)
 
         if item.status == "matched":
             appointment = item.appointment_entry
@@ -1603,7 +1494,6 @@ def agreement_history(request):
         total_count=Count("id"),
         completed_count=Count("id", filter=Q(status="completed")),
         matched_count=Count("id", filter=Q(status="matched")),
-        total_quote=Sum("matched_offer__quote_amount"),
     )
     return render(
         request,
@@ -1615,7 +1505,6 @@ def agreement_history(request):
             "summary_total_count": summary.get("total_count", 0) or 0,
             "summary_completed_count": summary.get("completed_count", 0) or 0,
             "summary_matched_count": summary.get("matched_count", 0) or 0,
-            "summary_total_quote": summary.get("total_quote"),
         },
     )
 
@@ -1832,97 +1721,8 @@ def complete_request(request, request_id):
         )
 
     purge_request_messages(service_request.id)
-    escrow_released = release_escrow_payment(
-        service_request,
-        actor_user=request.user,
-        actor_role=actor_role,
-        note="Musteri isi tamamlayip odemeyi serbest birakti",
-    )
-    if escrow_released:
-        messages.success(request, "Talep tamamlandi ve emanet odeme ustaya aktarildi.")
-    else:
-        messages.success(request, "Talep tamamlandi olarak guncellendi.")
+    messages.success(request, "Talep tamamlandi olarak guncellendi.")
     return redirect("my_requests")
-
-
-@login_required
-@require_POST
-def fund_escrow(request, request_id):
-    if get_provider_for_user(request.user):
-        messages.error(request, "Bu alan sadece musteri hesaplari icindir.")
-        return redirect("provider_requests")
-
-    service_request = get_object_or_404(ServiceRequest, id=request_id, customer=request.user)
-    if service_request.status != "matched":
-        messages.warning(request, "Emanet odeme sadece eslesen taleplerde acilabilir.")
-        return redirect("my_requests")
-    if not service_request.matched_provider or not service_request.matched_provider.is_verified:
-        messages.warning(request, "Bu usta henüz admin onaylı olmadığı için işlem yapılamaz.")
-        return redirect("my_requests")
-
-    escrow = get_or_create_escrow_payment(service_request)
-    if escrow is None:
-        messages.warning(request, "Bu talep icin emanet odeme olusturulamadi.")
-        return redirect("my_requests")
-    if escrow.status != "awaiting_funding":
-        messages.info(request, "Bu talep icin emanet odeme zaten fonlanmis veya kapatilmis.")
-        return redirect("my_requests")
-
-    raw_amount = (request.POST.get("amount") or "").strip().replace(",", ".")
-    amount = escrow.agreed_amount
-    if raw_amount:
-        try:
-            amount = Decimal(raw_amount)
-        except InvalidOperation:
-            messages.warning(request, "Odeme tutari gecersiz.")
-            return redirect("my_requests")
-
-    if amount <= 0:
-        messages.warning(request, "Odeme tutari sifirdan buyuk olmali.")
-        return redirect("my_requests")
-
-    escrow.funded_amount = amount
-    escrow.status = "funded"
-    escrow.funded_at = timezone.now()
-    escrow.note = "Musteri emanet odeme fonladi"
-    escrow.save(update_fields=["funded_amount", "status", "funded_at", "note", "updated_at"])
-
-    provider_phone = service_request.matched_provider.phone if service_request.matched_provider else ""
-    if provider_phone:
-        send_sms(
-            provider_phone,
-            f"UstaBul odeme: Talep #{service_request.id} icin {amount} TL emanet odeme fonlandi.",
-        )
-
-    messages.success(request, "Emanet odeme basariyla fonlandi.")
-    return redirect("my_requests")
-
-
-@login_required
-@require_POST
-def release_escrow(request, request_id):
-    if get_provider_for_user(request.user):
-        messages.error(request, "Bu alan sadece musteri hesaplari icindir.")
-        return redirect("provider_requests")
-
-    service_request = get_object_or_404(ServiceRequest, id=request_id, customer=request.user)
-    if service_request.status != "completed":
-        messages.warning(request, "Emanet odeme sadece tamamlanan islerde serbest birakilabilir.")
-        return redirect("my_requests")
-
-    actor_role = infer_actor_role(request.user)
-    released = release_escrow_payment(
-        service_request,
-        actor_user=request.user,
-        actor_role=actor_role,
-        note="Musteri odemeyi manuel serbest birakti",
-    )
-    if released:
-        messages.success(request, "Emanet odeme ustaya aktarildi.")
-    else:
-        messages.info(request, "Bu talep icin aktarilacak fon bulunmuyor.")
-    return redirect("my_requests")
-
 
 @login_required
 @require_POST
@@ -2273,7 +2073,6 @@ def select_provider_offer(request, request_id, offer_id):
         ):
             messages.warning(request, "Talep durumu eşleştirme için uygun değil.")
             return redirect("my_requests")
-        get_or_create_escrow_payment(service_request)
 
     messages.success(request, f"Talep #{service_request.id} için {selected_offer.provider.full_name} seçildi.")
     return redirect("my_requests")
@@ -2383,11 +2182,6 @@ def provider_detail(request, provider_id):
     recent_ratings = list(provider.ratings.select_related("customer").order_by("-updated_at")[:10])
     completed_jobs = provider.service_requests.filter(status="completed").count()
     successful_quotes = provider.offers.filter(status="accepted").count()
-    avg_quote = (
-        provider.offers.filter(status="accepted", quote_amount__isnull=False)
-        .aggregate(avg_value=Avg("quote_amount"))
-        .get("avg_value")
-    )
     return render(
         request,
         "Myapp/provider_detail.html",
@@ -2396,7 +2190,6 @@ def provider_detail(request, provider_id):
             "recent_ratings": recent_ratings,
             "completed_jobs": completed_jobs,
             "successful_quotes": successful_quotes,
-            "avg_quote": avg_quote,
         },
     )
 
@@ -2626,27 +2419,13 @@ def provider_accept_offer(request, offer_id):
             messages.warning(request, "Bu talep artık açık değil.")
             return redirect("provider_requests")
 
-        raw_quote_amount = (request.POST.get("quote_amount") or "").strip().replace(",", ".")
-        if not raw_quote_amount:
-            messages.warning(request, "Teklif tutari zorunludur.")
-            return redirect("provider_requests")
-        try:
-            quote_amount = Decimal(raw_quote_amount)
-        except InvalidOperation:
-            messages.warning(request, "Teklif tutari gecerli bir sayi olmali.")
-            return redirect("provider_requests")
-        if quote_amount <= 0:
-            messages.warning(request, "Teklif tutari sifirdan buyuk olmali.")
-            return redirect("provider_requests")
-
         quote_note = (request.POST.get("quote_note") or "").strip()[:240]
 
         now = timezone.now()
         offer.status = "accepted"
         offer.responded_at = now
-        offer.quote_amount = quote_amount
         offer.quote_note = quote_note
-        offer.save(update_fields=["status", "responded_at", "quote_amount", "quote_note"])
+        offer.save(update_fields=["status", "responded_at", "quote_note"])
 
         if not transition_service_request_status(
             service_request,
@@ -2745,4 +2524,7 @@ def provider_reject_offer(request, offer_id):
             f"Talep #{request_id} için kabul eden usta bulunamadı, talep silindi.",
         )
     return redirect("provider_requests")
+
+
+
 

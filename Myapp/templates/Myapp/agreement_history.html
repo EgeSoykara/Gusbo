@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block content %}
 <section class="card panel-card shadow-sm reveal-up mb-4">
   <div class="card-body p-4">
@@ -15,7 +15,7 @@
       {% endif %}
     </div>
     <p class="text-muted mt-2 mb-0">
-      Kimle, hangi tutarda ve ne zaman anlaşıldığını bu ekrandan takip edebilirsin.
+      Kimle ve ne zaman anlaşıldığını bu ekrandan takip edebilirsin.
     </p>
   </div>
 </section>
@@ -52,10 +52,6 @@
     {% if agreements %}
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
         <h2 class="h5 mb-0"><i class="bi bi-list-check me-2"></i>Anlaşma Kayıtları</h2>
-        <span class="small text-muted">
-          Toplam teklif tutarı:
-          {% if summary_total_quote %}{{ summary_total_quote }} TL{% else %}-{% endif %}
-        </span>
       </div>
       <div class="table-responsive">
         <table class="table request-table align-middle mb-0">
@@ -68,7 +64,6 @@
               {% else %}
                 <th>Usta</th>
               {% endif %}
-              <th>Teklif</th>
               <th>Anlaşma Zamanı</th>
               <th>Durum</th>
               <th>Randevu</th>
@@ -94,13 +89,6 @@
                     {% endif %}
                   </td>
                 {% endif %}
-                <td>
-                  {% if item.matched_offer and item.matched_offer.quote_amount %}
-                    {{ item.matched_offer.quote_amount }} TL
-                  {% else %}
-                    <span class="small text-muted">Belirtilmedi</span>
-                  {% endif %}
-                </td>
                 <td>
                   {% if item.matched_at %}
                     {{ item.matched_at|date:"d.m.Y H:i" }}
@@ -132,13 +120,13 @@
           <nav aria-label="Anlaşma geçmişi sayfalama">
             <ul class="pagination pagination-sm mb-0">
               <li class="page-item {% if not agreements_page_obj.has_previous %}disabled{% endif %}">
-                <a class="page-link" href="page={% if agreements_page_obj.has_previous %}{{ agreements_page_obj.previous_page_number }}{% else %}1{% endif %}" aria-label="Önceki">
+                <a class="page-link" href="?page={% if agreements_page_obj.has_previous %}{{ agreements_page_obj.previous_page_number }}{% else %}1{% endif %}" aria-label="Önceki">
                   <span aria-hidden="true">&laquo;</span>
                 </a>
               </li>
               <li class="page-item disabled"><span class="page-link">{{ agreements_page_obj.number }}</span></li>
               <li class="page-item {% if not agreements_page_obj.has_next %}disabled{% endif %}">
-                <a class="page-link" href="page={% if agreements_page_obj.has_next %}{{ agreements_page_obj.next_page_number }}{% else %}{{ agreements_page_obj.paginator.num_pages }}{% endif %}" aria-label="Sonraki">
+                <a class="page-link" href="?page={% if agreements_page_obj.has_next %}{{ agreements_page_obj.next_page_number }}{% else %}{{ agreements_page_obj.paginator.num_pages }}{% endif %}" aria-label="Sonraki">
                   <span aria-hidden="true">&raquo;</span>
                 </a>
               </li>
@@ -152,3 +140,7 @@
   </div>
 </section>
 {% endblock %}
+
+
+
+

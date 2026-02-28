@@ -1,10 +1,10 @@
 ﻿{% extends "base.html" %}
 {% block content %}
-<section class="card panel-card shadow-sm reveal-up">
+<section class="card panel-card shadow-sm reveal-up my-requests-section">
   <div class="card-body p-4">
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
       <h1 class="h4 mb-0"><i class="bi bi-kanban me-2"></i>Taleplerim</h1>
-      <div class="d-flex align-items-center gap-2">
+      <div class="d-flex align-items-center gap-2 my-requests-toolbar">
         {% if cancelled_count %}
           <form method="post" action="{% url 'delete_all_cancelled_requests' %}" class="m-0">
             {% csrf_token %}
@@ -38,17 +38,26 @@
           </thead>
           <tbody>
             {% for item in requests %}
-              <tr>
-                <td>{{ item.created_at|date:"d.m.Y H:i" }}</td>
-                <td>{{ item.service_type.name }}</td>
-                <td>{{ item.city }} / {{ item.district }}</td>
-                <td><span class="status-pill status-{{ item.status }}">{{ item.get_status_display }}</span></td>
-                <td>
+              <tr class="request-row-card">
+                <td data-label="Tarih">{{ item.created_at|date:"d.m.Y H:i" }}</td>
+                <td data-label="Hizmet">{{ item.service_type.name }}</td>
+                <td data-label="Konum">{{ item.city }} / {{ item.district }}</td>
+                <td data-label="Durum">
+                  <div class="request-status-mobile-wrap">
+                    <span class="status-pill status-{{ item.status }}">{{ item.get_status_display }}</span>
+                    <button
+                      type="button"
+                      class="request-mobile-toggle"
+                      data-request-mobile-toggle
+                      aria-expanded="false"
+                    >
+                      Detaylar
+                    </button>
+                  </div>
+                </td>
+                <td data-label="Eşleşen Usta">
                   {% if item.matched_provider %}
                     {{ item.matched_provider.full_name }} ({{ item.matched_provider.phone }})
-                    {% if item.matched_offer and item.matched_offer.quote_amount %}
-                      <br><span class="small text-muted">Anlaşılan teklif: {{ item.matched_offer.quote_amount }} TL</span>
-                    {% endif %}
                     {% if item.matched_at %}
                       <br><span class="small text-muted">Anlaşma zamanı: {{ item.matched_at|date:"d.m.Y H:i" }}</span>
                     {% endif %}
@@ -60,7 +69,7 @@
                     Henüz eşleşmedi
                   {% endif %}
                 </td>
-                <td>
+                <td data-label="Randevu">
                   {% if item.appointment_entry %}
                     <div class="small fw-semibold">{{ item.appointment_entry.scheduled_for|date:"d.m.Y H:i" }}</div>
                     <span class="status-pill appointment-status appointment-{{ item.appointment_entry.status }}">
@@ -78,44 +87,9 @@
                     <span class="small text-muted">-</span>
                   {% endif %}
                 </td>
-                <td>
+                <td data-label="İşlemler">
                   {% if item.status == "matched" %}
                     <div class="request-actions-stack">
-                      {% if item.escrow_entry %}
-                        <div class="request-action-group">
-                          <div class="request-action-title">Emanet Odeme</div>
-                          <div class="request-action-note">
-                            Durum: {{ item.escrow_entry.get_status_display }}{% if item.escrow_entry.agreed_amount %} - {{ item.escrow_entry.agreed_amount }} TL{% endif %}
-                          </div>
-                          {% if item.escrow_entry.status == "awaiting_funding" %}
-                            <form method="post" action="{% url 'fund_escrow' item.id %}" class="m-0">
-                              {% csrf_token %}
-                              <input
-                                type="number"
-                                name="amount"
-                                min="1"
-                                step="0.01"
-                                class="appointment-note-input"
-                                value="{{ item.escrow_entry.agreed_amount }}"
-                                placeholder="Tutar"
-                                required
-                              >
-                              <button type="submit" class="btn btn-sm btn-main mt-2">
-                                <i class="bi bi-shield-lock me-1"></i>Emanete Aktar
-                              </button>
-                            </form>
-                          {% elif item.escrow_entry.status == "funded" %}
-                            <div class="request-action-note text-success">
-                              <i class="bi bi-shield-check me-1"></i>Odeme guvende tutuluyor.
-                            </div>
-                          {% elif item.escrow_entry.status == "released" %}
-                            <div class="request-action-note text-success">
-                              <i class="bi bi-cash-coin me-1"></i>Odeme ustaya aktarildi.
-                            </div>
-                          {% endif %}
-                        </div>
-                      {% endif %}
-
                       <div class="request-action-group">
                         <div class="request-action-title">İletişim</div>
                         <a href="{% url 'request_messages' item.id %}" class="btn btn-sm nav-ghost-btn">
@@ -294,26 +268,6 @@
                     {% if item.matched_provider %}
                       <div class="request-actions-stack">
                         <span class="small text-muted"><i class="bi bi-lock-fill me-1"></i>Mesajlaşma tamamlanan işte kapalı.</span>
-                        {% if item.escrow_entry %}
-                          <div class="request-action-group">
-                            <div class="request-action-title">Emanet Odeme</div>
-                            <div class="request-action-note">
-                              Durum: {{ item.escrow_entry.get_status_display }}{% if item.escrow_entry.funded_amount %} - {{ item.escrow_entry.funded_amount }} TL{% endif %}
-                            </div>
-                            {% if item.escrow_entry.status == "funded" %}
-                              <form method="post" action="{% url 'release_escrow' item.id %}" class="m-0">
-                                {% csrf_token %}
-                                <button type="submit" class="btn btn-sm request-complete-confirm-btn">
-                                  <i class="bi bi-cash-coin me-1"></i>Odemeyi Serbest Birak
-                                </button>
-                              </form>
-                            {% elif item.escrow_entry.status == "released" %}
-                              <div class="request-action-note text-success">
-                                <i class="bi bi-check2-circle me-1"></i>Odeme ustaya aktarildi.
-                              </div>
-                            {% endif %}
-                          </div>
-                        {% endif %}
                         <form method="post" action="{% url 'rate_request' item.id %}" class="request-rate-form">
                           {% csrf_token %}
                           <div class="request-rate-row">
@@ -353,23 +307,17 @@
                               {% if item.recommended_offer_id == offer.id %}
                                 <span class="offer-badge">Önerilen</span>
                               {% endif %}
-                              {% if offer.quote_amount %}
-                                <span class="offer-price">{{ offer.quote_amount }} TL</span>
-                              {% else %}
-                                <span class="offer-price">Fiyat belirtilmedi</span>
-                              {% endif %}
                             </div>
                             <div class="offer-score mb-2">
                               <span>Karşılaştırma Puanı:</span>
                               <strong>{{ offer.comparison_score }}/100</strong>
                             </div>
                             <div class="offer-score-breakdown mb-2">
-                              <span>Fiyat {{ offer.price_score }}</span>
                               <span>Puan {{ offer.rating_score }}</span>
                               <span>Hız {{ offer.speed_score }}</span>
                             </div>
                             <div class="small text-muted mb-2">
-                              Skor formülü: Fiyat (55) + Usta puanı (35) + Hız (10). Hız, teklifin geliş sırasına göre hesaplanır.
+                              Skor formülü: Usta puanı (70) + Hız (30). Hız, teklifin geliş sırasına göre hesaplanır.
                             </div>
                             <div class="small text-muted mb-2">Usta puani: {{ offer.provider.rating }}/5</div>
                             {% if offer.quote_note %}
@@ -425,13 +373,13 @@
           <nav aria-label="Taleplerim sayfalama">
             <ul class="pagination pagination-sm mb-0">
               <li class="page-item {% if not requests_page_obj.has_previous %}disabled{% endif %}">
-                <a class="page-link" href="page={% if requests_page_obj.has_previous %}{{ requests_page_obj.previous_page_number }}{% else %}1{% endif %}" aria-label="Önceki">
+                <a class="page-link" href="?page={% if requests_page_obj.has_previous %}{{ requests_page_obj.previous_page_number }}{% else %}1{% endif %}" aria-label="Önceki">
                   <span aria-hidden="true">&laquo;</span>
                 </a>
               </li>
               <li class="page-item disabled"><span class="page-link">{{ requests_page_obj.number }}</span></li>
               <li class="page-item {% if not requests_page_obj.has_next %}disabled{% endif %}">
-                <a class="page-link" href="page={% if requests_page_obj.has_next %}{{ requests_page_obj.next_page_number }}{% else %}{{ requests_page_obj.paginator.num_pages }}{% endif %}" aria-label="Sonraki">
+                <a class="page-link" href="?page={% if requests_page_obj.has_next %}{{ requests_page_obj.next_page_number }}{% else %}{{ requests_page_obj.paginator.num_pages }}{% endif %}" aria-label="Sonraki">
                   <span aria-hidden="true">&raquo;</span>
                 </a>
               </li>
@@ -486,6 +434,22 @@
     document.addEventListener("click", function (event) {
       if (event.target.closest("[data-complete-confirm-form]")) return;
       closeAllExcept(null);
+    });
+  })();
+</script>
+<script>
+  (function () {
+    const toggleButtons = document.querySelectorAll("[data-request-mobile-toggle]");
+    if (!toggleButtons.length) return;
+
+    toggleButtons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        const row = button.closest("tr.request-row-card");
+        if (!row) return;
+        const expanded = row.classList.toggle("mobile-expanded");
+        button.setAttribute("aria-expanded", expanded ? "true" : "false");
+        button.textContent = expanded ? "Kapat" : "Detaylar";
+      });
     });
   })();
 </script>
@@ -809,5 +773,3 @@
   })();
 </script>
 {% endblock %}
-
-

@@ -8,7 +8,6 @@ from datetime import timedelta
 from .constants import NC_CITY_CHOICES, NC_DISTRICT_CHOICES
 from .models import (
     CustomerProfile,
-    EscrowPayment,
     IdempotencyRecord,
     Provider,
     ProviderAvailabilitySlot,
@@ -149,7 +148,6 @@ class ProviderOfferAdmin(admin.ModelAdmin):
         "provider",
         "sequence",
         "status",
-        "quote_amount",
         "expires_at",
         "reminder_sent_at",
         "token",
@@ -172,23 +170,6 @@ class ProviderAvailabilitySlotAdmin(admin.ModelAdmin):
     list_display = ("provider", "weekday", "start_time", "end_time", "is_active", "updated_at")
     list_filter = ("weekday", "is_active", "provider__city")
     search_fields = ("provider__full_name", "provider__user__username")
-
-
-@admin.register(EscrowPayment)
-class EscrowPaymentAdmin(admin.ModelAdmin):
-    list_display = (
-        "service_request",
-        "customer",
-        "provider",
-        "agreed_amount",
-        "funded_amount",
-        "status",
-        "funded_at",
-        "released_at",
-        "updated_at",
-    )
-    list_filter = ("status", "provider__city")
-    search_fields = ("service_request__id", "customer__username", "provider__full_name", "note")
 
 
 @admin.register(ServiceMessage)

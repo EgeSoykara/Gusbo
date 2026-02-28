@@ -150,9 +150,6 @@
                     <i class="bi bi-star-fill me-1"></i>Ortalama Puan: {{ provider.rating }} / 5
                     <span class="rating-count">({{ provider.ratings_count }} değerlendirme)</span>
                   </p>
-                  {% if provider.avg_quote %}
-                    <p class="small mb-1 provider-quote"><i class="bi bi-cash-coin me-1"></i>Tahmini Teklif Ort.: {{ provider.avg_quote|floatformat:0 }} TL</p>
-                  {% endif %}
                   <div class="provider-bottom">
                     <p class="small mb-0 provider-phone"><i class="bi bi-telephone-fill me-1"></i><strong>{{ provider.phone }}</strong></p>
                     <div class="provider-actions">
@@ -174,17 +171,17 @@
               <nav aria-label="Usta listesi sayfalama">
                 <ul class="pagination pagination-sm mb-0">
                   <li class="page-item {% if not provider_page_obj.has_previous %}disabled{% endif %}">
-                    <a class="page-link" href="{{ provider_page_query }}{% if provider_page_query %}&{% endif %}provider_page=1" aria-label="İlk">&laquo;&laquo;</a>
+                    <a class="page-link" href="?{{ provider_page_query }}{% if provider_page_query %}&{% endif %}provider_page=1" aria-label="İlk">&laquo;&laquo;</a>
                   </li>
                   <li class="page-item {% if not provider_page_obj.has_previous %}disabled{% endif %}">
-                    <a class="page-link" href="{{ provider_page_query }}{% if provider_page_query %}&{% endif %}provider_page={% if provider_page_obj.has_previous %}{{ provider_page_obj.previous_page_number }}{% else %}1{% endif %}" aria-label="Önceki">&laquo;</a>
+                    <a class="page-link" href="?{{ provider_page_query }}{% if provider_page_query %}&{% endif %}provider_page={% if provider_page_obj.has_previous %}{{ provider_page_obj.previous_page_number }}{% else %}1{% endif %}" aria-label="Önceki">&laquo;</a>
                   </li>
                   <li class="page-item disabled"><span class="page-link">{{ provider_page_obj.number }}</span></li>
                   <li class="page-item {% if not provider_page_obj.has_next %}disabled{% endif %}">
-                    <a class="page-link" href="{{ provider_page_query }}{% if provider_page_query %}&{% endif %}provider_page={% if provider_page_obj.has_next %}{{ provider_page_obj.next_page_number }}{% else %}{{ provider_page_obj.paginator.num_pages }}{% endif %}" aria-label="Sonraki">&raquo;</a>
+                    <a class="page-link" href="?{{ provider_page_query }}{% if provider_page_query %}&{% endif %}provider_page={% if provider_page_obj.has_next %}{{ provider_page_obj.next_page_number }}{% else %}{{ provider_page_obj.paginator.num_pages }}{% endif %}" aria-label="Sonraki">&raquo;</a>
                   </li>
                   <li class="page-item {% if not provider_page_obj.has_next %}disabled{% endif %}">
-                    <a class="page-link" href="{{ provider_page_query }}{% if provider_page_query %}&{% endif %}provider_page={{ provider_page_obj.paginator.num_pages }}" aria-label="Son">&raquo;&raquo;</a>
+                    <a class="page-link" href="?{{ provider_page_query }}{% if provider_page_query %}&{% endif %}provider_page={{ provider_page_obj.paginator.num_pages }}" aria-label="Son">&raquo;&raquo;</a>
                   </li>
                 </ul>
               </nav>
