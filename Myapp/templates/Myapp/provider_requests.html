@@ -22,6 +22,7 @@
       2) Uygun olanı kabul et.
       3) Müşteri mesajına ve randevuya sırayla dönüş yap.
       <br>Müşteri panelinde bu aşamalar sırasıyla "Usta yanıtı bekleniyor", "Usta seçimi" ve "Randevu onayı" olarak görünür.
+      <br>Randevu saati beklenen işler "Aktif Mesajlaşmalar" bölümünde ayrıca belirtilir.
     </div>
   </div>
 </section>
@@ -50,6 +51,11 @@
     <div class="provider-kpi-title">Okunmamış Mesaj</div>
     <div class="provider-kpi-value">{{ total_unread_messages }}</div>
     <div class="provider-kpi-note">Mesajlara dönüş yapmak güveni artırır.</div>
+  </article>
+  <article class="provider-kpi-card">
+    <div class="provider-kpi-title">Saat Bekleyen Eşleşme</div>
+    <div class="provider-kpi-value">{{ waiting_schedule_count }}</div>
+    <div class="provider-kpi-note">Müşteri randevu saati belirlemedi.</div>
   </article>
 </section>
 
@@ -125,6 +131,7 @@
               <th>Hizmet</th>
               <th>Müşteri</th>
               <th>Durum</th>
+              <th>Randevu Akışı</th>
               <th>Mesaj</th>
             </tr>
           </thead>
@@ -135,6 +142,12 @@
                 <td data-label="Hizmet">{{ thread.service_type.name }}</td>
                 <td data-label="Müşteri">{{ thread.customer_name }}</td>
                 <td data-label="Durum"><span class="status-pill status-{{ thread.status }}">{{ thread.get_status_display }}</span></td>
+                <td data-label="Randevu Akışı">
+                  <div class="provider-flow-badge provider-flow-{{ thread.appointment_feedback_tone }}">
+                    {{ thread.appointment_feedback_label }}
+                  </div>
+                  <div class="small text-muted mt-1">{{ thread.appointment_feedback_note }}</div>
+                </td>
                 <td data-label="Mesaj">
                   <a href="{% url 'request_messages' thread.id %}" class="btn btn-sm nav-ghost-btn">
                     <i class="bi bi-chat-dots me-1"></i>Mesajları Gör
