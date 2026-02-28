@@ -2486,9 +2486,52 @@ def provider_requests(request):
         .select_related("service_type", "customer")
         .order_by("-created_at")[:30]
     )
-    unread_map = build_unread_message_map([item.id for item in active_threads], "provider")
+    active_thread_ids = [item.id for item in active_threads]
+    unread_map = build_unread_message_map(active_thread_ids, "provider")
+    appointment_map = {
+        appointment.service_request_id: appointment
+        for appointment in ServiceAppointment.objects.filter(service_request_id__in=active_thread_ids)
+    }
+    waiting_schedule_count = 0
     for thread in active_threads:
         thread.unread_messages = unread_map.get(thread.id, 0)
+        thread.appointment_entry = appointment_map.get(thread.id)
+        thread.appointment_feedback_tone = "neutral"
+        thread.appointment_feedback_label = "Durum güncelleniyor"
+        thread.appointment_feedback_note = "Randevu bilgisi kontrol ediliyor."
+
+        appointment = thread.appointment_entry
+        if appointment is None:
+            waiting_schedule_count += 1
+            thread.appointment_feedback_tone = "warning"
+            thread.appointment_feedback_label = "Randevu saati bekleniyor"
+            thread.appointment_feedback_note = "Müşterinin randevu saati seçmesi bekleniyor."
+            continue
+
+        appointment_status = appointment.status
+        if appointment_status in {"rejected", "cancelled"}:
+            waiting_schedule_count += 1
+            thread.appointment_feedback_tone = "warning"
+            thread.appointment_feedback_label = "Yeni randevu saati bekleniyor"
+            thread.appointment_feedback_note = "Müşterinin yeni bir randevu oluşturması gerekiyor."
+        elif appointment_status == "pending":
+            thread.appointment_feedback_tone = "action"
+            thread.appointment_feedback_label = "Randevu onayınız bekleniyor"
+            thread.appointment_feedback_note = "Müşteri saat seçimini yaptı. Bekleyen Randevu Talepleri bölümünü kontrol edin."
+        elif appointment_status == "pending_customer":
+            thread.appointment_feedback_tone = "info"
+            thread.appointment_feedback_label = "Müşteri son onayı bekleniyor"
+            thread.appointment_feedback_note = "Randevu ustadan onaylandı, son adım müşteri onayı."
+        elif appointment_status == "confirmed":
+            thread.appointment_feedback_tone = "success"
+            thread.appointment_feedback_label = "Randevu onaylandı"
+            thread.appointment_feedback_note = "Planlanan saat: " + timezone.localtime(appointment.scheduled_for).strftime(
+                "%d.%m.%Y %H:%M"
+            )
+        elif appointment_status == "completed":
+            thread.appointment_feedback_tone = "success"
+            thread.appointment_feedback_label = "Randevu tamamlandı"
+            thread.appointment_feedback_note = "Bu randevu kapatıldı."
     total_unread_messages = sum(thread.unread_messages for thread in active_threads)
 
     return render(
@@ -2504,6 +2547,7 @@ def provider_requests(request):
             "recent_appointments_page_obj": recent_appointments_page_obj,
             "active_threads": active_threads,
             "total_unread_messages": total_unread_messages,
+            "waiting_schedule_count": waiting_schedule_count,
             "recent_offers_page_obj": recent_offers_page_obj,
         },
     )

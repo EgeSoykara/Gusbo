@@ -382,9 +382,9 @@ class NotificationCursor(models.Model):
 class ProviderAvailabilitySlot(models.Model):
     WEEKDAY_CHOICES = (
         (0, "Pazartesi"),
-        (1, "Sali"),
-        (2, "Carsamba"),
-        (3, "Persembe"),
+        (1, "Salı"),
+        (2, "Çarşamba"),
+        (3, "Perşembe"),
         (4, "Cuma"),
         (5, "Cumartesi"),
         (6, "Pazar"),
@@ -407,4 +407,4 @@ class ProviderAvailabilitySlot(models.Model):
 
     def clean(self):
         if self.end_time <= self.start_time:
-            raise ValidationError("Bitis saati baslangic saatinden sonra olmalidir.")
+            raise ValidationError("Bitiş saati başlangıç saatinden sonra olmalıdır.")
